@@ -17,7 +17,7 @@ $ ~/Downloads/test/kaas-bootstrap/logs/ myrha
 ```
 
 Myrha will check for nececessary packages and will prompt you to install them if needed (using apt,dnf or brew).<br>
-Once the script is complete, a new folder called "myrha" will be created, where yaml files will be created, containing the summary of different cluster aspects (MCC and/or MOS)<br>
+Once the script is complete, a new folder called "myrha" will be created, where yaml files will be created, containing the summary of different cluster aspects (MCC and/or MOS)<br><br>
 By default, the script is set to automatically open Sublime text with all files generated. You can also open them up on vim my uncommenting the following lines:<br>
 
 ```
