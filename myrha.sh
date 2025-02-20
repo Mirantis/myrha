@@ -36,14 +36,40 @@ rm $LOGPATH/*
 find . -not -path '$LOGPATH' -type f -name '*' > $LOGPATH/files
 
 # Discover MCC and MOS cluster name and namespace:
-grep -m1 "    name: " $(ls */objects/namespaced/default/cluster.k8s.io/clusters/*.yaml) |awk '{print $2}' > $LOGPATH/mcc-cluster-name
-MCCNAME=$(cat $LOGPATH/mcc-cluster-name)
-grep -m1 "    namespace: " $(ls */objects/namespaced/default/cluster.k8s.io/clusters/*.yaml) |awk '{print $2}' > $LOGPATH/mcc-cluster-namespace
-MCCNAMESPACE=$(cat $LOGPATH/mcc-cluster-namespace)
-ls . |grep -vE $LOGPATH\|$MCCNAME > $LOGPATH/mos-cluster-name
-MOSNAME=$(cat $LOGPATH/mos-cluster-name)
-grep -m1 "    namespace: " $(ls ./$MCCNAME/objects/namespaced/*/cluster.k8s.io/clusters/$MOSNAME.yaml) |awk '{print $2}' > $LOGPATH/mos-cluster-namespace
-MOSNAMESPACE=$(cat $LOGPATH/mos-cluster-namespace)
+if ls */objects/namespaced/default/cluster.k8s.io/clusters/*.yaml 2>&1 > /dev/null ; then
+    grep -m1 "    name: " $(ls */objects/namespaced/default/cluster.k8s.io/clusters/*.yaml) |awk '{print $2}' > $LOGPATH/mcc-cluster-name
+    MCCNAME=$(cat $LOGPATH/mcc-cluster-name)
+    echo "MCC cluster found"
+    grep -m1 "    namespace: " $(ls */objects/namespaced/default/cluster.k8s.io/clusters/*.yaml) |awk '{print $2}' > $LOGPATH/mcc-cluster-namespace
+    MCCNAMESPACE=$(cat $LOGPATH/mcc-cluster-namespace)
+    echo "MCC namespace found"
+else
+    echo "MCC cluster not found"
+    MCCNAME=none
+    MCCNAMESPACE=none
+fi
+if [ "$MCCNAME" = "none" ] && [ "$MCCNAMESPACE" = "none" ]; then
+    ls . |grep -vE $LOGPATH\|$MCCNAME > $LOGPATH/mos-cluster-name
+    MOSNAME=$(cat $LOGPATH/mos-cluster-name)
+    echo "MOS cluster found"
+    echo "Unable to determine MOS namespace from MCC cluster. Proceeding anyway."
+    MOSNAMESPACE=none
+fi
+if [ "$MCCNAME" != "none" ] && [ "$MCCNAMESPACE" != "none" ]; then
+    if ls . |grep -qvE $LOGPATH\|$MCCNAME ; then
+        ls . |grep -vE $LOGPATH\|$MCCNAME > $LOGPATH/mos-cluster-name
+        MOSNAME=$(cat $LOGPATH/mos-cluster-name)
+        echo "MOS cluster found"
+        grep -m1 "    namespace: " $(ls ./$MCCNAME/objects/namespaced/*/cluster.k8s.io/clusters/$MOSNAME.yaml) |awk '{print $2}' > $LOGPATH/mos-cluster-namespace
+        MOSNAMESPACE=$(cat $LOGPATH/mos-cluster-namespace)
+        echo "MOS namespace found"
+    else
+        echo "MOS cluster not found"
+        echo "MOS namespace not found"
+        MOSNAME=none
+        MOSNAMESPACE=none
+    fi
+fi
 #grep "namespaced/rook-ceph/apps/deployments/" $LOGPATH/files |grep osd |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g' > $LOGPATH/ceph-osd
 #grep "namespaced/rook-ceph/apps/deployments/" $LOGPATH/files |grep mon |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g' > $LOGPATH/ceph-mon
 #grep "namespaced/rook-ceph/apps/deployments/" $LOGPATH/files |grep mgr |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g' > $LOGPATH/ceph-mgr
@@ -54,6 +80,7 @@ MOSNAMESPACE=$(cat $LOGPATH/mos-cluster-namespace)
 #find -path "*/namespaced/rook-ceph/apps/deployments/*rgw*" |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g' |sed -r '/^\s*$/d' > $LOGPATH/ceph-rgw
 
 # MOS Analysis
+if [ "$MOSNAMESPACE" != "none" ] && [ "$MOSNAME" != "none" ] && [ "$MCCNAME" != "none" ]; then
 echo "Gathering MOS cluster details..."
 echo "################# [MOS CLUSTER DETAILS] #################" > $LOGPATH/mos_cluster
 MOSVER1=$(grep -m1 "    release: " ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/lcm.mirantis.com/lcmclusters/$MOSNAME.yaml |awk '{print substr($0,14,2)}')
@@ -222,14 +249,18 @@ echo "## Details and versions:" >> $LOGPATH/mos_cluster
 printf '# ' >> $LOGPATH/mos_cluster; ls ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/cluster.k8s.io/clusters/$MOSNAME.yaml >> $LOGPATH/mos_cluster
 grep -E "release: mosk-|      - message" ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/cluster.k8s.io/clusters/$MOSNAME.yaml >> $LOGPATH/mos_cluster
 sed -n '/          stacklight:/,/      kind:/p' ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/cluster.k8s.io/clusters/$MOSNAME.yaml >> $LOGPATH/mos_cluster
+fi
 
+if [ "$MOSNAME" != "none" ]; then
 echo "Gathering MOS cluster events..."
 echo "################# [MOS EVENTS (WARNING+ERRORS)] #################" > $LOGPATH/mos_events
 echo "" >> $LOGPATH/mos_events
 echo "## Analyzed files:" >> $LOGPATH/mos_events
 printf '# ' >> $LOGPATH/mos_events; ls ./$MOSNAME/objects/events.log >> $LOGPATH/mos_events
 grep -E "Warning|Error" ./$MOSNAME/objects/events.log |sort -M >> $LOGPATH/mos_events
+fi
 
+if [ "$MCCNAME" != "none" ] && [ "$MOSNAMESPACE" != "none" ] && [ "$MOSNAME" != "none" ]; then
 echo "Gathering MOS node details..."
 echo "################# [MOS NODE DETAILS] #################" > $LOGPATH/mos_nodes
 echo "" >> $LOGPATH/mos_nodes
@@ -243,7 +274,9 @@ printf "## Nodes" >> $LOGPATH/mos_nodes ; printf " (Total: `wc -l < $LOGPATH/mos
 echo "" >> $LOGPATH/mos_nodes
 while read -r line; do printf '# '; printf "$line" |awk -F "/" -v 'OFS=/' '{print $7}' |sed 's|\.yaml||g'; done < $LOGPATH/mos-nodes >> $LOGPATH/mos_nodes
 while read -r line; do echo ""; printf "# $line:"; echo ""; grep -E "      kaas.mirantis.com/machine-name:" $line; sed -n '/    nodeInfo:/,/      systemUUID:/p' $line; sed -n '/    conditions:/,/    daemonEndpoints:/p' $line |head -n -1; done < $LOGPATH/mos-nodes >> $LOGPATH/mos_nodes
+fi
 
+if [ "$MCCNAME" != "none" ] && [ "$MOSNAMESPACE" != "none" ]; then
 echo "Gathering MOS LCM machine details..."
 echo "################# [MOS LCM MACHINE DETAILS] #################" > $LOGPATH/mos_lcmmachine
 grep ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/lcm.mirantis.com/lcmmachines $LOGPATH/files > $LOGPATH/mos-lcmmachine
@@ -254,7 +287,9 @@ while read -r line; do printf "# "; printf "$line" |awk -F "/" -v 'OFS=/' '{prin
 echo "" >> $LOGPATH/mos_lcmmachine
 while read -r line; do printf "# $line:"; echo ""; sed -n '/  status:/,/    tokenSecret:/p' $line; echo ""; done < $LOGPATH/mos-lcmmachine >> $LOGPATH/mos_lcmmachine
 echo "" >> $LOGPATH/mos_lcmmachine
+fi
 
+if [ "$MOSNAME" != "none" ]; then
 echo "Gathering MOS Ceph details..."
 echo "################# [MOS CEPH DETAILS] #################" > $LOGPATH/mos_ceph
 echo "" >> $LOGPATH/mos_ceph
@@ -271,7 +306,9 @@ while read -r line; do printf "# $line:"; echo ""; grep -iE 'error|fail|warn' $l
 echo "## Osd node logs (Warnings/Errors):" >> $LOGPATH/mos_ceph
 grep "/osd.log" $LOGPATH/files > $LOGPATH/ceph-osd
 while read -r line; do printf "# $line:"; echo ""; grep -iE 'error|fail|warn' $line |sed -r '/^\s*$/d'; echo ""; done < $LOGPATH/ceph-osd >> $LOGPATH/mos_ceph
+fi
 
+if [ "$MOSNAME" != "none" ]; then
 echo "Gathering MOS Openstack details and logs..."
 echo "################# [MOS OPENSTACK DETAILS] #################" > $LOGPATH/mos_openstack
 echo "" >> $LOGPATH/mos_openstack
@@ -322,7 +359,9 @@ echo "" >> $LOGPATH/mos_openstack
 echo "## Logs from rabbitmq pods (Errors/Warnings - last 100 lines):" >> $LOGPATH/mos_openstack
 grep '/rabbitmq.log' $LOGPATH/files > $LOGPATH/mos-openstack-rabbitmq
 while read -r line; do printf "# $line:"; echo ""; grep -E '\[warning\]|\[error\]' $line |sed -r '/^\s*$/d' |tail -n 100; echo ""; done < $LOGPATH/mos-openstack-rabbitmq >> $LOGPATH/mos_openstack
+fi
 
+if [ "$MOSNAME" != "none" ]; then
 echo "Gathering MOS Mariadb details and logs..."
 echo "################# [MOS MARIADB DETAILS] #################" > $LOGPATH/mos_mariadb
 echo "" >> $LOGPATH/mos_mariadb
@@ -345,7 +384,9 @@ echo "" >> $LOGPATH/mos_mariadb
 echo "## Logs from server-2 pods (Errors/Warnings):" >> $LOGPATH/mos_mariadb
 printf '# ' >> $LOGPATH/mos_mariadb; ls ./$MOSNAME/objects/namespaced/openstack/core/pods/mariadb-server-2/mariadb.log >> $LOGPATH/mos_mariadb
 grep -E 'ERR|WARN' ./$MOSNAME/objects/namespaced/openstack/core/pods/mariadb-server-2/mariadb.log |sed -r '/^\s*$/d'  >> $LOGPATH/mos_mariadb
+fi
 
+if [ "$MCCNAME" != "none" ] && [ "$MOSNAMESPACE" != "none" ] ; then
 echo "Gathering MOS Ipamhost details..."
 echo "################# [MOS IPAMHOST DETAILS] #################" > $LOGPATH/mos_ipamhost
 echo "" >> $LOGPATH/mos_ipamhost
@@ -355,7 +396,9 @@ echo "" >> $LOGPATH/mos_ipamhost
 while read -r line; do printf "# "; printf "$line" |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g'; done < $LOGPATH/mos-ipamhost >> $LOGPATH/mos_ipamhost
 echo "" >> $LOGPATH/mos_ipamhost
 while read -r line; do printf "# $line:"; echo ""; sed -n '/  spec:/,/    state:/p' $line; echo ""; done < $LOGPATH/mos-ipamhost >> $LOGPATH/mos_ipamhost
+fi
 
+if [ "$MCCNAME" != "none" ] && [ "$MOSNAMESPACE" != "none" ] ; then
 echo "Gathering MOS L2template details..."
 echo "################# [MOS L2TEMPLATE DETAILS] #################" > $LOGPATH/mos_l2template
 echo "" >> $LOGPATH/mos_l2template
@@ -363,7 +406,9 @@ grep ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/ipam.mirantis.com/l2templates/ 
 printf '## L2templates' >> $LOGPATH/mos_l2template ; printf " (Total: `wc -l < $LOGPATH/mos-l2template`)" >> $LOGPATH/mos_l2template
 echo "" >> $LOGPATH/mos_l2template
 while read -r line; do printf "# $line:"; echo ""; sed -n '/  spec:/,/    state:/p' $line; echo ""; done < $LOGPATH/mos-l2template >> $LOGPATH/mos_l2template
+fi
 
+if [ "$MCCNAME" != "none" ] && [ "$MOSNAMESPACE" != "none" ] ; then
 echo "Gathering MOS subnet details..."
 echo "################# [MOS SUBNET DETAILS] #################" > $LOGPATH/mos_subnet
 grep ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/ipam.mirantis.com/subnets/ $LOGPATH/files > $LOGPATH/mos-subnet
@@ -374,7 +419,9 @@ while read -r line; do printf "# "; printf "$line" |awk -F "/" -v 'OFS=/' '{prin
 echo "" >> $LOGPATH/mos_subnet
 while read -r line; do printf "# $line:"; echo ""; sed -n '/  status:/,/    tokenSecret:/p' $line; echo ""; done < $LOGPATH/mos-subnet >> $LOGPATH/mos_subnet
 echo "" >> $LOGPATH/mos_subnet
+fi
 
+if [ "$MOSNAME" != "none" ] ; then
 echo "Gathering MOS PV and PVC details..."
 echo "################# [MOS PV AND PVC DETAILS] #################" > $LOGPATH/mos_pv_pvc
 grep ./$MOSNAME/objects/cluster/core/persistentvolumes/ $LOGPATH/files > $LOGPATH/mos-pv
@@ -391,8 +438,10 @@ echo "" >> $LOGPATH/mos_pv_pvc
 while read -r line; do printf "# "; printf "$line" |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g'; done < $LOGPATH/mos-pvc >> $LOGPATH/mos_pv_pvc
 echo "" >> $LOGPATH/mos_pv_pvc
 while read -r line; do printf "# $line:"; echo ""; sed -n '/  spec:/,/    state:/p' $line; echo ""; done < $LOGPATH/mos-pvc >> $LOGPATH/mos_pv_pvc
+fi
 
 # MCC Analysis
+if [ "$MCCNAME" != "none" ] && [ "$MCCNAMESPACE" != "none" ] ; then
 echo "Gathering MCC cluster details..."
 echo "################# [MCC CLUSTER DETAILS] #################" > $LOGPATH/mcc_cluster
 MCCVER1=$(grep -m1 "release: kaas-" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml |awk '{print substr($0,25,1)}')
@@ -574,25 +623,29 @@ echo "" >> $LOGPATH/mcc_cluster
 echo "## LCM status:" >> $LOGPATH/mcc_cluster
 printf '# ' >> $LOGPATH/mcc_cluster; ls ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/lcm.mirantis.com/lcmclusters/$MCCNAME.yaml >> $LOGPATH/mcc_cluster
 sed -n '/  status:/,/    requestedNodes:/p' ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/lcm.mirantis.com/lcmclusters/$MCCNAME.yaml >> $LOGPATH/mcc_cluster
+fi
 
-
+if [ "$MCCNAME" != "none" ] ; then
 echo "Gathering MCC events..."
 echo "################# [MCC EVENTS (WARNING+ERRORS)] #################" > $LOGPATH/mcc_events
 echo "" >> $LOGPATH/mcc_events
 echo "## Analyzed files:" >> $LOGPATH/mcc_events
 printf '# ' >> $LOGPATH/mcc_events; ls ./$MCCNAME/objects/events.log >> $LOGPATH/mcc_events
 grep -E "Warning|Error" ./$MCCNAME/objects/events.log |sort -M >> $LOGPATH/mcc_events
+fi
 
+if [ "$MCCNAME" != "none" ] ; then
 echo "Gathering MCC node details..."
 echo "################# [MCC NODE DETAILS] #################" > $LOGPATH/mcc_nodes
-
 echo "" >> $LOGPATH/mcc_nodes
 grep "/core/nodes" $LOGPATH/files |grep $MCCNAME > $LOGPATH/mcc-nodes
 printf "## Nodes" >> $LOGPATH/mcc_nodes ; printf " (Total: `wc -l < $LOGPATH/mcc-nodes`)" >> $LOGPATH/mcc_nodes
 echo "" >> $LOGPATH/mcc_nodes
 while read -r line; do printf '# '; printf "$line" |awk -F "/" -v 'OFS=/' '{print $7}' |sed 's|\.yaml||g'; done < $LOGPATH/mcc-nodes >> $LOGPATH/mcc_nodes
 while read -r line; do echo ""; printf "# $line:"; echo ""; grep -E "      kaas.mirantis.com/machine-name:" $line; sed -n '/    nodeInfo:/,/      systemUUID:/p' $line; sed -n '/    conditions:/,/    daemonEndpoints:/p' $line |head -n -1; done < $LOGPATH/mcc-nodes >> $LOGPATH/mcc_nodes
+fi
 
+if [ "$MCCNAME" != "none" ] ; then
 echo "Gathering MCC LCM machine details..."
 echo "################# [MCC LCM MACHINE DETAILS] #################" > $LOGPATH/mcc_lcmmachine
 grep ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/lcm.mirantis.com/lcmmachines $LOGPATH/files > $LOGPATH/mcc-lcmmachine
@@ -603,7 +656,9 @@ while read -r line; do printf "# "; printf "$line" |awk -F "/" -v 'OFS=/' '{prin
 echo "" >> $LOGPATH/mcc_lcmmachine
 while read -r line; do printf "# $line:"; echo ""; sed -n '/  status:/,/    tokenSecret:/p' $line; echo ""; done < $LOGPATH/mcc-lcmmachine >> $LOGPATH/mcc_lcmmachine
 echo "" >> $LOGPATH/mcc_lcmmachine
+fi
 
+if [ "$MCCNAME" != "none" ] ; then
 echo "Gathering MCC Mariadb details and logs..."
 echo "################# [MCC MARIADB DETAILS] #################" > $LOGPATH/mcc_mariadb
 echo "" >> $LOGPATH/mcc_mariadb
@@ -626,7 +681,9 @@ echo "" >> $LOGPATH/mcc_mariadb
 echo "## Logs from server-2 pods (Errors/Warnings):" >> $LOGPATH/mcc_mariadb
 printf '# ' >> $LOGPATH/mcc_mariadb; ls ./$MCCNAME/objects/namespaced/kaas/core/pods/mariadb-server-2/mariadb.log >> $LOGPATH/mcc_mariadb
 grep -E 'ERR|WARN' ./$MCCNAME/objects/namespaced/kaas/core/pods/mariadb-server-2/mariadb.log |sed -r '/^\s*$/d'  >> $LOGPATH/mcc_mariadb
+fi
 
+if [ "$MCCNAME" != "none" ] ; then
 echo "Gathering MCC certificates..."
 echo "################# [MCC CERTIFICATE DETAILS] #################" > $LOGPATH/mcc_certs
 echo "" >> $LOGPATH/mcc_certs
@@ -710,7 +767,9 @@ openssl x509 -modulus -noout -in $LOGPATH/mcc-oidc-crt |openssl md5 >> $LOGPATH/
 echo "## Is the OIDC certificate still valid?" >> $LOGPATH/mcc_certs
 echo "# openssl x509 -enddate -noout -in tls.crt" >> $LOGPATH/mcc_certs
 openssl x509 -enddate -noout -in $LOGPATH/mcc-oidc-crt >> $LOGPATH/mcc_certs
+fi
 
+if [ "$MCCNAME" != "none" ] && [ "$MCCNAMESPACE" != "none" ] ; then
 echo "Gathering MCC Ipamhost details..."
 echo "################# [MCC IPAMHOST DETAILS] #################" > $LOGPATH/mcc_ipamhost
 echo "" >> $LOGPATH/mcc_ipamhost
@@ -720,7 +779,9 @@ echo "" >> $LOGPATH/mcc_ipamhost
 while read -r line; do printf "# "; printf "$line" |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g'; done < $LOGPATH/mcc-ipamhost >> $LOGPATH/mcc_ipamhost
 echo "" >> $LOGPATH/mcc_ipamhost
 while read -r line; do printf "# $line:"; echo ""; sed -n '/  spec:/,/    state:/p' $line; echo ""; done < $LOGPATH/mcc-ipamhost >> $LOGPATH/mcc_ipamhost
+fi
 
+if [ "$MCCNAME" != "none" ] && [ "$MCCNAMESPACE" != "none" ] ; then
 echo "Gathering MCC L2template details..."
 echo "################# [MCC L2TEMPLATE DETAILS] #################" > $LOGPATH/mcc_l2template
 echo "" >> $LOGPATH/mcc_l2template
@@ -728,7 +789,9 @@ grep ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/ipam.mirantis.com/l2templates/ 
 printf '## L2 templates' >> $LOGPATH/mcc_l2template ; printf " (Total: `wc -l < $LOGPATH/mcc-l2template`)" >> $LOGPATH/mcc_l2template
 echo "" >> $LOGPATH/mcc_l2template
 while read -r line; do printf "# $line:"; echo ""; sed -n '/  spec:/,/    state:/p' $line; echo ""; done < $LOGPATH/mcc-l2template >> $LOGPATH/mcc_l2template
+fi
 
+if [ "$MCCNAME" != "none" ] && [ "$MCCNAMESPACE" != "none" ] ; then
 echo "Gathering MCC subnet details..."
 echo "################# [MCC SUBNET DETAILS] #################" > $LOGPATH/mcc_subnet
 grep ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/ipam.mirantis.com/subnets/ $LOGPATH/files > $LOGPATH/mcc-subnet
@@ -739,7 +802,9 @@ while read -r line; do printf "# "; printf "$line" |awk -F "/" -v 'OFS=/' '{prin
 echo "" >> $LOGPATH/mcc_subnet
 while read -r line; do printf "# $line:"; echo ""; sed -n '/  status:/,/    tokenSecret:/p' $line; echo ""; done < $LOGPATH/mcc-subnet >> $LOGPATH/mcc_subnet
 echo "" >> $LOGPATH/mcc_subnet
+fi
 
+if [ "$MCCNAME" != "none" ] ; then
 echo "Gathering MCC PV and PVC details..."
 echo "################# [MCC PV AND PVC DETAILS] #################" > $LOGPATH/mcc_pv_pvc
 grep ./$MCCNAME/objects/cluster/core/persistentvolumes/ $LOGPATH/files > $LOGPATH/mcc-pv
@@ -756,10 +821,11 @@ echo "" >> $LOGPATH/mcc_pv_pvc
 while read -r line; do printf "# "; printf "$line" |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g'; done < $LOGPATH/mcc-pvc >> $LOGPATH/mcc_pv_pvc
 echo "" >> $LOGPATH/mcc_pv_pvc
 while read -r line; do printf "# $line:"; echo ""; sed -n '/  spec:/,/    state:/p' $line; echo ""; done < $LOGPATH/mcc-pvc >> $LOGPATH/mcc_pv_pvc
+fi
 
 # Delete temporaty files generated:
 echo "Removing temp files..."
-#rm $LOGPATH/*-*
+rm $LOGPATH/*-*
 
 # Rename report files to .yaml so text editors can recognise the syntax
 echo "Converting report files to yaml..."
