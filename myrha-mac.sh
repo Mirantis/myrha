@@ -24,7 +24,7 @@ then
 fi
 
 echo "Generating report. This operation may take several minutes... Please wait."
-rm $LOGPATH/*
+rm $LOGPATH/* 2> /dev/null
 
 # List all files on logs:
 find . -not -path '$LOGPATH' -type f -name '*' > $LOGPATH/files
