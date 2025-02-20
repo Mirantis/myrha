@@ -27,7 +27,7 @@ then
 fi
 
 echo "Generating report. This operation may take several minutes... Please wait."
-rm $LOGPATH/*
+rm $LOGPATH/* 2> /dev/null
 
 # List all files on logs:
 find . -not -path '$LOGPATH' -type f -name '*' > $LOGPATH/files
@@ -834,3 +834,5 @@ echo "Report Complete. Opening files..."
 
 # Run sublime text to load all files:
 subl --new-window --command $LOGPATH/*.yaml 2> /dev/null
+
+
