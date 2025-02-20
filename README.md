@@ -29,14 +29,12 @@ mos_events.yaml   mos_ceph.yaml        mos_ipamhost.yaml   mos_pv_pvc.yaml      
 By default, the script is set to automatically open Sublime text with all files generated. You can also open them up on vim by commenting the following lines:<br>
 
 ```
-# Run sublime text to load all files:
 /Applications/Sublime\ Text.app/Contents/SharedSupport/bin/subl --new-window --command $LOGPATH/*.yaml 2> /dev/null
 ```
 
 and uncommenting the following ones:<br>
 
 ```
-# Run nvim to load all files:
 #nvim -R -c 'silent argdo set syntax=yaml' -p $LOGPATH/*_*
 #nvim -R -p $LOGPATH/*.yaml
 ```
