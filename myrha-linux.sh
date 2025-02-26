@@ -73,15 +73,15 @@ fi
 #find -path "*/namespaced/rook-ceph/apps/deployments/*rgw*" |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g' |sed -r '/^\s*$/d' > $LOGPATH/ceph-rgw
 
 # MOS Analysis
-if [[ -n "$MCCNAME" ]] ; then
+if [[ -n "$MOSNAME" ]] ; then
 echo "Gathering MOS cluster details..."
 echo "################# [MOS CLUSTER DETAILS] #################" > $LOGPATH/mos_cluster
-MOSVER1=$(grep -m1 "    release: " ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/lcm.mirantis.com/lcmclusters/$MOSNAME.yaml |awk '{print substr($0,14,2)}')
-MOSVER2=$(grep -m1 "    release: " ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/lcm.mirantis.com/lcmclusters/$MOSNAME.yaml |awk '{print substr($0,17,1)}')
-MOSVER3=$(grep -m1 "    release: " ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/lcm.mirantis.com/lcmclusters/$MOSNAME.yaml |awk '{print substr($0,19,1)}')
-MOSVER4=$(grep -m1 "    release: " ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/lcm.mirantis.com/lcmclusters/$MOSNAME.yaml |awk '{print substr($0,21,2)}')
-MOSVER5=$(grep -m1 "    release: " ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/lcm.mirantis.com/lcmclusters/$MOSNAME.yaml |awk '{print substr($0,24,1)}')
-MOSVER6=$(grep -m1 "    release: " ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/lcm.mirantis.com/lcmclusters/$MOSNAME.yaml |awk '{print substr($0,26,1)}')
+MOSVER1=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |awk '{print substr($0,16,2)}')
+MOSVER2=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |awk '{print substr($0,19,1)}')
+MOSVER3=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |awk '{print substr($0,21,1)}')
+MOSVER4=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |awk '{print substr($0,23,2)}')
+MOSVER5=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |awk '{print substr($0,26,1)}')
+MOSVER6=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |awk '{print substr($0,28,1)}')
 printf "## MOS release details (Managed): $MOSVER1.$MOSVER2.$MOSVER3+$MOSVER4.$MOSVER5.$MOSVER6" >> $LOGPATH/mos_cluster
 echo "" >> $LOGPATH/mos_cluster
 echo "https://docs.mirantis.com/container-cloud/latest/release-notes/cluster-releases/$MOSVER1-x/$MOSVER1-$MOSVER2-x/$MOSVER1-$MOSVER2-$MOSVER3.html" >> $LOGPATH/mos_cluster
@@ -239,13 +239,15 @@ then
 fi
 echo "" >> $LOGPATH/mos_cluster
 echo "## Details and versions:" >> $LOGPATH/mos_cluster
-printf '# ' >> $LOGPATH/mos_cluster; ls ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/cluster.k8s.io/clusters/$MOSNAME.yaml >> $LOGPATH/mos_cluster
-grep -E "release: mosk-|      - message" ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/cluster.k8s.io/clusters/$MOSNAME.yaml >> $LOGPATH/mos_cluster
-sed -n '/          stacklight:/,/      kind:/p' ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/cluster.k8s.io/clusters/$MOSNAME.yaml >> $LOGPATH/mos_cluster
+printf '# ' >> $LOGPATH/mos_cluster; ls ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml >> $LOGPATH/mos_cluster
+grep -E "      release:|      openstack_version:" ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml >> $LOGPATH/mos_cluster
+sed -n '/    services:/,$p' ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml >> $LOGPATH/mos_cluster
 echo "" >> $LOGPATH/mos_cluster
+if [[ -n "$MCCNAME" ]] ; then
 echo "## LCM status:" >> $LOGPATH/mos_cluster
 printf '# ' >> $LOGPATH/mos_nodes; ls ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/lcm.mirantis.com/lcmclusters/$MOSNAME.yaml >> $LOGPATH/mos_cluster
 sed -n '/  status:/,/    requestedNodes:/p' ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/lcm.mirantis.com/lcmclusters/$MOSNAME.yaml >> $LOGPATH/mos_cluster
+fi
 fi
 
 if [[ -n "$MOSNAME" ]] ; then
