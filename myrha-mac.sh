@@ -4,6 +4,7 @@ DATE=$(date +"%d-%m-%Y-%H-%M-%S")
 GREP="grep --color=auto"
 LOGPATH=myrha
 mkdir $LOGPATH 2> /dev/null 
+
 if ! command -v rg 2>&1 >/dev/null
 then
     echo "the command ripgrep could not be found. Installing"
@@ -31,10 +32,10 @@ find . -not -path '$LOGPATH' -type f -name '*' > $LOGPATH/files
 
 # Discover MCC and MOS cluster name and namespace:
 if ls */objects/namespaced/default/cluster.k8s.io/clusters/*.yaml 2>&1 > /dev/null ; then
-    grep -m1 "    name: " $(ls */objects/namespaced/default/cluster.k8s.io/clusters/*.yaml) |awk '{print $2}' > $LOGPATH/mcc-cluster-name
+    grep -m1 "    name: " $(ls */objects/namespaced/default/cluster.k8s.io/clusters/*.yaml) |awk '{print $2}' 2> /dev/null  1> $LOGPATH/mcc-cluster-name
     MCCNAME=$(cat $LOGPATH/mcc-cluster-name)
     echo "MCC cluster found"
-    grep -m1 "    namespace: " $(ls */objects/namespaced/default/cluster.k8s.io/clusters/*.yaml) |awk '{print $2}' > $LOGPATH/mcc-cluster-namespace
+    grep -m1 "    namespace: " $(ls */objects/namespaced/default/cluster.k8s.io/clusters/*.yaml) |awk '{print $2}' 2> /dev/null  1> $LOGPATH/mcc-cluster-namespace
     MCCNAMESPACE=$(cat $LOGPATH/mcc-cluster-namespace)
     echo "MCC namespace found"
 else
@@ -43,23 +44,30 @@ else
     MCCNAMESPACE=none
 fi
 if [ "$MCCNAME" = "none" ] && [ "$MCCNAMESPACE" = "none" ]; then
-    ls . |grep -vE $LOGPATH\|$MCCNAME > $LOGPATH/mos-cluster-name
-    MOSNAME=$(cat $LOGPATH/mos-cluster-name)
-    echo "MOS cluster found"
-    echo "Unable to determine MOS namespace from MCC cluster. Proceeding anyway."
-    MOSNAMESPACE=none
-fi
-if [ "$MCCNAME" != "none" ] && [ "$MCCNAMESPACE" != "none" ]; then
-    if ls . |grep -qvE $LOGPATH\|$MCCNAME ; then
-        ls . |grep -vE $LOGPATH\|$MCCNAME > $LOGPATH/mos-cluster-name
+    if ls -d */objects/namespaced/openstack 2>&1 > /dev/null ; then
+        ls -d */objects/namespaced/openstack |awk -F "/" -v 'OFS=/' '{print $1}' 2> /dev/null 1> $LOGPATH/mos-cluster-name
         MOSNAME=$(cat $LOGPATH/mos-cluster-name)
         echo "MOS cluster found"
-        grep -m1 "    namespace: " $(ls ./$MCCNAME/objects/namespaced/*/cluster.k8s.io/clusters/$MOSNAME.yaml) |awk '{print $2}' > $LOGPATH/mos-cluster-namespace
+        MOSNAMESPACE=none
+        echo "Unable to determine MOS namespace from MCC cluster. Proceeding anyway."
+    else
+        echo "MOS cluster not found"
+        #echo "MOS namespace not found"
+        MOSNAME=none
+        MOSNAMESPACE=none
+    fi
+fi
+if [ "$MCCNAME" != "none" ] && [ "$MCCNAMESPACE" != "none" ]; then
+    if ls -d */objects/namespaced/openstack 2>&1 > /dev/null ; then
+        ls -d */objects/namespaced/openstack |awk -F "/" -v 'OFS=/' '{print $1}' 2> /dev/null 1> $LOGPATH/mos-cluster-name
+        MOSNAME=$(cat $LOGPATH/mos-cluster-name)
+        echo "MOS cluster found"
+        grep -m1 "    namespace: " $(ls ./$MCCNAME/objects/namespaced/*/cluster.k8s.io/clusters/$MOSNAME.yaml) |awk '{print $2}' 2> /dev/null 1> $LOGPATH/mos-cluster-namespace
         MOSNAMESPACE=$(cat $LOGPATH/mos-cluster-namespace)
         echo "MOS namespace found"
     else
         echo "MOS cluster not found"
-        echo "MOS namespace not found"
+        #echo "MOS namespace not found"
         MOSNAME=none
         MOSNAMESPACE=none
     fi
@@ -243,6 +251,12 @@ echo "## Details and versions:" >> $LOGPATH/mos_cluster
 printf '# ' >> $LOGPATH/mos_cluster; ls ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/cluster.k8s.io/clusters/$MOSNAME.yaml >> $LOGPATH/mos_cluster
 grep -E "release: mosk-|      - message" ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/cluster.k8s.io/clusters/$MOSNAME.yaml >> $LOGPATH/mos_cluster
 sed -n '/          stacklight:/,/      kind:/p' ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/cluster.k8s.io/clusters/$MOSNAME.yaml >> $LOGPATH/mos_cluster
+echo "" >> $LOGPATH/mos_cluster
+if [ "$MCCNAME" != "none" ]; then
+echo "## LCM status:" >> $LOGPATH/mos_cluster
+printf '# ' >> $LOGPATH/mos_nodes; ls ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/lcm.mirantis.com/lcmclusters/$MOSNAME.yaml >> $LOGPATH/mos_cluster
+sed -n '/  status:/,/    requestedNodes:/p' ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/lcm.mirantis.com/lcmclusters/$MOSNAME.yaml >> $LOGPATH/mos_cluster
+fi
 fi
 
 if [ "$MOSNAME" != "none" ]; then
@@ -257,10 +271,6 @@ fi
 if [ "$MCCNAME" != "none" ] && [ "$MOSNAMESPACE" != "none" ] && [ "$MOSNAME" != "none" ]; then
 echo "Gathering MOS node details..."
 echo "################# [MOS NODE DETAILS] #################" > $LOGPATH/mos_nodes
-echo "" >> $LOGPATH/mos_nodes
-echo "## LCM status:" >> $LOGPATH/mos_nodes
-printf '# ' >> $LOGPATH/mos_nodes; ls ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/lcm.mirantis.com/lcmclusters/$MOSNAME.yaml >> $LOGPATH/mos_nodes
-sed -n '/  status:/,/    requestedNodes:/p' ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/lcm.mirantis.com/lcmclusters/$MOSNAME.yaml >> $LOGPATH/mos_nodes
 echo "" >> $LOGPATH/mos_nodes
 grep "/core/nodes" $LOGPATH/files |grep $MOSNAME > $LOGPATH/mos-nodes
 printf "## Nodes" >> $LOGPATH/mos_nodes ; printf " (Total: `wc -l < $LOGPATH/mos-nodes`)" >> $LOGPATH/mos_nodes
@@ -306,8 +316,8 @@ echo "Gathering MOS Openstack details and logs..."
 echo "################# [MOS OPENSTACK DETAILS] #################" > $LOGPATH/mos_openstack
 echo "" >> $LOGPATH/mos_openstack
 echo "## OSDPL details:" >> $LOGPATH/mos_openstack
-printf '# ' >> $LOGPATH/mos_openstack; ls ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeployments/$MOSNAME.yaml >> $LOGPATH/mos_openstack
-sed -n '/  spec:/,/  status:/p' ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeployments/$MOSNAME.yaml |head -n 1 >> $LOGPATH/mos_openstack
+printf '# ' >> $LOGPATH/mos_openstack; ls ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeployments/*.yaml >> $LOGPATH/mos_openstack
+sed -n '/  spec:/,/  status:/p' ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeployments/*.yaml |head -n 1 >> $LOGPATH/mos_openstack
 echo "" >> $LOGPATH/mos_openstack
 echo "## Logs from neutron-server pods (Errors/Warnings - last 100 lines):" >> $LOGPATH/mos_openstack
 grep 'neutron-server.log' $LOGPATH/files > $LOGPATH/mos-openstack-neutron-server
@@ -816,9 +826,10 @@ echo "" >> $LOGPATH/mcc_pv_pvc
 while read -r line; do printf "# $line:"; echo ""; sed -n '/  spec:/,/    state:/p' $line; echo ""; done < $LOGPATH/mcc-pvc >> $LOGPATH/mcc_pv_pvc
 fi
 
+if [ "$MCCNAME" != "none" ] || [ "$MOSNAME" != "none" ] ; then
 # Delete temporaty files generated:
 echo "Removing temp files..."
-rm $LOGPATH/*-*
+rm $LOGPATH/*-* 2> /dev/null
 
 # Rename report files to .yaml so text editors can recognise the syntax
 echo "Converting report files to yaml..."
@@ -831,3 +842,4 @@ echo "Report Complete. Opening files..."
 
 # Run sublime text to load all files:
 /Applications/Sublime\ Text.app/Contents/SharedSupport/bin/subl --new-window --command $LOGPATH/*.yaml 2> /dev/null
+fi
