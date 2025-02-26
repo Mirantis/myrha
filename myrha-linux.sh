@@ -46,34 +46,17 @@ else
     MCCNAME=none
     MCCNAMESPACE=none
 fi
-if [ "$MCCNAME" = "none" ] && [ "$MCCNAMESPACE" = "none" ]; then
-    if ls -d */objects/namespaced/openstack 2>&1 > /dev/null ; then
-        ls -d */objects/namespaced/openstack |awk -F "/" -v 'OFS=/' '{print $1}' 2> /dev/null 1> $LOGPATH/mos-cluster-name
-        MOSNAME=$(cat $LOGPATH/mos-cluster-name)
-        echo "MOS cluster found"
-        MOSNAMESPACE=none
-        echo "Unable to determine MOS namespace from MCC cluster. Proceeding anyway."
-    else
-        echo "MOS cluster not found"
-        #echo "MOS namespace not found"
-        MOSNAME=none
-        MOSNAMESPACE=none
-    fi
-fi
-if [ "$MCCNAME" != "none" ] && [ "$MCCNAMESPACE" != "none" ]; then
-    if ls -d */objects/namespaced/openstack 2>&1 > /dev/null ; then
-        ls -d */objects/namespaced/openstack |awk -F "/" -v 'OFS=/' '{print $1}' 2> /dev/null 1> $LOGPATH/mos-cluster-name
-        MOSNAME=$(cat $LOGPATH/mos-cluster-name)
-        echo "MOS cluster found"
-        grep -m1 "    namespace: " $(ls ./$MCCNAME/objects/namespaced/*/cluster.k8s.io/clusters/$MOSNAME.yaml) |awk '{print $2}' 2> /dev/null 1> $LOGPATH/mos-cluster-namespace
-        MOSNAMESPACE=$(cat $LOGPATH/mos-cluster-namespace)
-        echo "MOS namespace found"
-    else
-        echo "MOS cluster not found"
-        #echo "MOS namespace not found"
-        MOSNAME=none
-        MOSNAMESPACE=none
-    fi
+if ls -d */objects/namespaced/openstack 2>&1 > /dev/null ; then
+    ls -d */objects/namespaced/openstack |awk -F "/" -v 'OFS=/' '{print $1}' 2> /dev/null 1> $LOGPATH/mos-cluster-name
+    MOSNAME=$(cat $LOGPATH/mos-cluster-name)
+    echo "MOS cluster found"
+    grep -m1 "    namespace: " $(ls ./$MCCNAME/objects/namespaced/*/cluster.k8s.io/clusters/$MOSNAME.yaml) |awk '{print $2}' 2> /dev/null 1> $LOGPATH/mos-cluster-namespace
+    MOSNAMESPACE=$(cat $LOGPATH/mos-cluster-namespace)
+    echo "MOS namespace found"
+else
+    echo "MOS cluster not found"
+    MOSNAME=none
+    MOSNAMESPACE=none
 fi
 #grep "namespaced/rook-ceph/apps/deployments/" $LOGPATH/files |grep osd |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g' > $LOGPATH/ceph-osd
 #grep "namespaced/rook-ceph/apps/deployments/" $LOGPATH/files |grep mon |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g' > $LOGPATH/ceph-mon
