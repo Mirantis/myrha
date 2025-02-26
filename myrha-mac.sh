@@ -827,7 +827,7 @@ while read -r line; do printf "# $line:"; echo ""; sed -n '/  spec:/,/    state:
 fi
 
 if [ "$MCCNAME" != "none" ] || [ "$MOSNAME" != "none" ] ; then
-# Delete temporaty files generated:
+# Delete temporary files generated:
 echo "Removing temp files..."
 rm $LOGPATH/*-* 2> /dev/null
 
@@ -842,4 +842,9 @@ echo "Report Complete. Opening files..."
 
 # Run sublime text to load all files:
 /Applications/Sublime\ Text.app/Contents/SharedSupport/bin/subl --new-window --command $LOGPATH/*.yaml 2> /dev/null
+fi
+
+if [ "$MCCNAME" == "none" ] && [ "$MOSNAME" == "none" ] ; then
+# Delete myrha folder as neither MCC and MOS clusters were found:
+rm -rf $LOGPATH 2> /dev/null
 fi
