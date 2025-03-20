@@ -435,7 +435,7 @@ grep tf-vrouter- $LOGPATH/files |grep log > $LOGPATH/mos-tf-vrouter
 while read -r line; do printf "# $line:"; echo ""; grep -E 'ERR|WARN' $line |sed -r '/^\s*$/d' ; echo ""; done < $LOGPATH/mos-tf-vrouter >> $LOGPATH/mos_tf
 echo "" >> $LOGPATH/mos_tf
 echo '## TF redis logs (Errors/Warnings)' >> $LOGPATH/mos_tf
-grep tf-redis files |grep log > $LOGPATH/mos-tf-redis
+grep tf-redis $LOGPATH/files |grep log > $LOGPATH/mos-tf-redis
 while read -r line; do printf "# $line:"; echo ""; grep -Ei 'ERR|WARN' $line |sed -r '/^\s*$/d' ; echo ""; done < $LOGPATH/mos-tf-redis >> $LOGPATH/mos_tf
 echo "" >> $LOGPATH/mos_tf
 echo '## TF cassandra-config logs (Errors/Warnings)' >> $LOGPATH/mos_tf
