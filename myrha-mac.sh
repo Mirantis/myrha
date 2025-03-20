@@ -77,167 +77,168 @@ MOSVER1=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.m
 MOSVER2=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |awk '{print substr($0,19,1)}')
 MOSVER3=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |awk '{print substr($0,21,1)}')
 MOSVER4=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |awk '{print substr($0,23,2)}')
-MOSVER5=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |awk '{print substr($0,26,1)}')
-MOSVER6=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |awk '{print substr($0,28,1)}')
-printf "## MOS release details (Managed): $MOSVER1.$MOSVER2.$MOSVER3+$MOSVER4.$MOSVER5.$MOSVER6" >> $LOGPATH/mos_cluster
+MOSVER5=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |awk '{print substr($0,25,2)}')
+MOSVER6=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |awk '{print substr($0,27,2)}')
+printf "## MOS release details (Managed): $MOSVER1.$MOSVER2.$MOSVER3+$MOSVER4$MOSVER5$MOSVER6" >> $LOGPATH/mos_cluster
 echo "" >> $LOGPATH/mos_cluster
 echo "https://docs.mirantis.com/container-cloud/latest/release-notes/cluster-releases/$MOSVER1-x/$MOSVER1-$MOSVER2-x/$MOSVER1-$MOSVER2-$MOSVER3.html" >> $LOGPATH/mos_cluster
-echo "https://docs.mirantis.com/mosk/latest/release-notes/$MOSVER4.$MOSVER5-series/$MOSVER4.$MOSVER5.$MOSVER6.html" >> $LOGPATH/mos_cluster
+echo "https://docs.mirantis.com/mosk/latest/release-notes/$MOSVER4$MOSVER5-series/$MOSVER4$MOSVER5$MOSVER6.html" >> $LOGPATH/mos_cluster
 echo "" >> $LOGPATH/mos_cluster
-printf "## MOS Bugs - $MOSVER4.$MOSVER5.$MOSVER6": >> $LOGPATH/mos_cluster
+printf "## MOS Bugs - $MOSVER4$MOSVER5$MOSVER6": >> $LOGPATH/mos_cluster
 echo "" >> $LOGPATH/mos_cluster
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.1.1" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.1.1" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.2%20%2F%20MOSK%2023.1.1%20%28Patch%20release%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.1.2" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.1.2" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.3%20%2F%20MOSK%2023.1.2%20%28Patch%20release%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.1.3" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.1.3" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.4%20%2F%20MOSK%2023.1.3%20%28Patch%20release%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.1.4" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.1.4" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.5%20%2F%20MOSK%2023.1.4%20%28Patch%20release%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.2.1" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.2.1" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.3%20%2F%20MOSK%2023.2.1%20%28Patch%20release1%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.2.2" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.2.2" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.4%20%2F%20MOSK%2023.2.2%20%28Patch%20release2%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.2.3" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.2.3" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.5%20%2F%20MOSK%2023.2.3%20%28Patch%20release3%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.3" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.3" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20IN%20%28%22KaaS%202.25%20%2F%20MOSK%2023.3%22%2C%20%22KaaS%202.25.x%20%2F%20MOSK%2023.3.x%22%29" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.3.1" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.3.1" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.1%20%2F%20MOSK%2023.3.1%20%28Patch%20release1%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.3.2" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.3.2" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.2%20%2F%20MOSK%2023.3.2%20%28Patch%20release2%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.3.3" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.3.3" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.3%20%2F%20MOSK%2023.3.3%20%28Patch%20release3%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.3.4" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.3.4" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.4%20%2F%20MOSK%2023.3.4%20%28Patch%20release4%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.3" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.3" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.x%20%2F%20MOSK%2023.3.x%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.1" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.1" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26%20%2F%20MOSK%2024.1%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.1.1" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.1.1" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.1%20%2F%20MOSK%2024.1.1%20%28Patch%20release1%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.1.2" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.1.2" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.2%20%2F%20MOSK%2024.1.2%20%28Patch%20release2%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.1.3" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.1.3" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.3%20%2F%20MOSK%2024.1.3%20%28Patch%20release3%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.1.4" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.1.4" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.4%20%2F%20MOSK%2024.1.4%20%28Patch%20release4%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.1.5" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.1.5" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.5%20%2F%20MOSK%2024.1.5%20%28Patch%20release5%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.1" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.1" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.x%20%2F%20MOSK%2024.1.x%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.2" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.2" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20IN%20%28%22KaaS%202.27%20%2F%20MOSK%2024.2%22%2C%20%22KaaS%202.27.x%20%2F%20MOSK%2024.2.x%22%29" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.1.6" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.1.6" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.1%20%2F%20MOSK%2024.1.6%20%28Patch%20release6%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.1.7" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.1.7" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.2%20%2F%20MOSK%2024.1.7%20%28Patch%20release7%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.2.1" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.2.1" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.3%20%2F%20MOSK%2024.2.1%20%28Patch%20release1%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.2.2" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.2.2" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.4%20%2F%20MOSK%2024.2.2%20%28Patch%20release2%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.3" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.3" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20IN%20%28%22KaaS%202.28.x%20%2F%20MOSK%2024.3.x%22%2C%20%22KaaS%202.28%20%2F%20MOSK%2024.3%22%29" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.2.3" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.2.3" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.1%20%2F%20MOSK%2024.2.3%20%28Patch%20release3%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.2.4" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.2.4" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.2%20%2F%20MOSK%2024.2.4%20%28Patch%20release4%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.2.5" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.2.5" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.3%20%2F%20MOSK%2024.2.5%20%28Patch%20release5%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.3.1" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.3.1" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.4%20%2F%20MOSK%2024.3.1%20%28Patch%20release1%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.3.2" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.3.2" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.5%20%2F%20MOSK%2024.3.2%20%28Patch%20release2%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.3" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.3" ]]
 then
    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.x%20%2F%20MOSK%2024.3.x%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "25.1" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "25.1" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20IN%20%28%22KaaS%202.29%20%2F%20MOSK%2025.1%22%2C%20%22KaaS%202.29.x%20%2F%20MOSK%2025.1.x%22%29" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.3.3" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.3.3" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.1%20%2F%20MOSK%2024.3.3%20%28Patch%20release3%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.3.4" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.3.4" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.2%20%2F%20MOSK%2024.3.4%20%28Patch%20release4%29%22" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "25.2" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "25.2" ]]
 then
     echo "https://mirantis.jira.com/issues/?jql=affectedversion%20IN%20%28%22KaaS%202.30.x%20%2F%20MOSK%2025.2.x%22%2C%20%22KaaS%202.30%20%2F%20MOSK%2025.2%22%29" >> $LOGPATH/mos_cluster
 fi
-if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "26.1" ]]
+if [[ "$MOSVER4$MOSVER5$MOSVER6" == "26.1" ]]
 then
    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20IN%20%28%22KaaS%202.31%20%2F%20MOSK%2026.1%22%2C%202.31%29" >> $LOGPATH/mos_cluster
 fi
 echo "" >> $LOGPATH/mos_cluster
 echo "## Details and versions:" >> $LOGPATH/mos_cluster
 printf '# ' >> $LOGPATH/mos_cluster; ls ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml >> $LOGPATH/mos_cluster
-grep -E "      release:|      openstack_version:" ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml >> $LOGPATH/mos_cluster
+grep -m1 "      release:" ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml >> $LOGPATH/mos_cluster
+grep -m1 "      openstack_version:" ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml >> $LOGPATH/mos_cluster
 sed -n '/    services:/,$p' ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml >> $LOGPATH/mos_cluster
 echo "" >> $LOGPATH/mos_cluster
 if [[ -n "$MCCNAME" ]] ; then
@@ -410,6 +411,41 @@ while read -r line; do printf "# "; printf "$line" |awk -F "/" -v 'OFS=/' '{prin
 echo "" >> $LOGPATH/mos_subnet
 while read -r line; do printf "# $line:"; echo ""; sed -n '/  status:/,/    tokenSecret:/p' $line; echo ""; done < $LOGPATH/mos-subnet >> $LOGPATH/mos_subnet
 echo "" >> $LOGPATH/mos_subnet
+fi
+
+if [[ -n "$MOSNAME" ]] && [[ -d $MOSNAME/objects/namespaced/tf ]]; then
+echo "Gathering TF details..."
+echo "################# [MOS TF DETAILS] #################" > $LOGPATH/mos_tf
+grep ./$MOSNAME/objects/namespaced/tf $LOGPATH/files > $LOGPATH/mos-tf
+echo "" >> $LOGPATH/mos_tf
+echo '## TF Operator' >> $LOGPATH/mos_tf
+printf '# ' >> $LOGPATH/mos_tf; ls ./$MOSNAME/objects/namespaced/tf/tf.mirantis.com/tfoperators/*.yaml >> $LOGPATH/mos_tf
+sed -n '/  spec:/,/$p/p' ./$MOSNAME/objects/namespaced/tf/tf.mirantis.com/tfoperators/*.yaml >> $LOGPATH/mos_tf
+echo "" >> $LOGPATH/mos_tf
+echo '## TF Control logs (Errors/Warnings)' >> $LOGPATH/mos_tf
+grep tf-control- $LOGPATH/files |grep log > $LOGPATH/mos-tf-control
+while read -r line; do printf "# $line:"; echo ""; grep -E 'ERR|WARN' $line |sed -r '/^\s*$/d' ; echo ""; done < $LOGPATH/mos-tf-control >> $LOGPATH/mos_tf
+echo "" >> $LOGPATH/mos_tf
+echo '## TF config logs (Errors/Warnings)' >> $LOGPATH/mos_tf
+grep tf-config- $LOGPATH/files |grep log > $LOGPATH/mos-tf-config
+while read -r line; do printf "# $line:"; echo ""; grep -E 'ERR|WARN' $line |sed -r '/^\s*$/d' ; echo ""; done < $LOGPATH/mos-tf-config >> $LOGPATH/mos_tf
+echo "" >> $LOGPATH/mos_tf
+echo '## TF vrouter logs (Errors/Warnings)' >> $LOGPATH/mos_tf
+grep tf-vrouter- $LOGPATH/files |grep log > $LOGPATH/mos-tf-vrouter
+while read -r line; do printf "# $line:"; echo ""; grep -E 'ERR|WARN' $line |sed -r '/^\s*$/d' ; echo ""; done < $LOGPATH/mos-tf-vrouter >> $LOGPATH/mos_tf
+echo "" >> $LOGPATH/mos_tf
+echo '## TF cassandra-config logs (Errors/Warnings)' >> $LOGPATH/mos_tf
+grep tf-cassandra-config $LOGPATH/files |grep log > $LOGPATH/mos-tf-cassandra-config
+while read -r line; do printf "# $line:"; echo ""; grep -E 'ERR|WARN' $line |sed -r '/^\s*$/d' ; echo ""; done < $LOGPATH/mos-tf-cassandra-config >> $LOGPATH/mos_tf
+echo "" >> $LOGPATH/mos_tf
+echo '## TF cassandra-operator logs (Errors/Warnings)' >> $LOGPATH/mos_tf
+grep cassandra-operator $LOGPATH/files |grep log > $LOGPATH/mos-tf-cassandra-operator
+while read -r line; do printf "# $line:"; echo ""; grep -E 'ERR|WARN' $line |sed -r '/^\s*$/d' ; echo ""; done < $LOGPATH/mos-tf-cassandra-operator >> $LOGPATH/mos_tf
+echo "" >> $LOGPATH/mos_tf
+echo '## TF rabbitmq logs (Errors/Warnings - last 100 lines):' >> $LOGPATH/mos_tf
+grep /rabbitmq.log $LOGPATH/files > $LOGPATH/mos-tf-rabbitmq
+while read -r line; do printf "# $line:"; echo ""; grep -E '\[warning\]|\[error\]' $line |sed -r '/^\s*$/d' |tail -n 100; echo ""; done < $LOGPATH/mos-tf-rabbitmq >> $LOGPATH/mos_tf
+echo "" >> $LOGPATH/mos_tf
 fi
 
 if [[ -n "$MOSNAME" ]] ; then
