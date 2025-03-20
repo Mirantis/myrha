@@ -422,10 +422,10 @@ echo "################# [MOS TF DETAILS] #################" > $LOGPATH/mos_tf
 grep ./$MOSNAME/objects/namespaced/tf $LOGPATH/files > $LOGPATH/mos-tf
 echo "" >> $LOGPATH/mos_tf
 echo '## TF Operator' >> $LOGPATH/mos_tf
-printf '# ' >> $LOGPATH/mos_tf; ls ./$MOSNAME/objects/namespaced/tf/tf.mirantis.com/tfoperators/*.yaml >> $LOGPATH/mos_tf
-sed -n '/  spec:/,/$p/p' ./$MOSNAME/objects/namespaced/tf/tf.mirantis.com/tfoperators/*.yaml >> $LOGPATH/mos_tf
+printf '# ' >> $LOGPATH/mos_tf; grep "/openstack-tf.yaml" $LOGPATH/files >> $LOGPATH/mos_tf
+sed -n '/  spec:/,/$p/p' $(grep "/openstack-tf.yaml" $LOGPATH/files) >> $LOGPATH/mos_tf
 echo "" >> $LOGPATH/mos_tf
-echo '## TF Control logs (Errors/Warnings)' >> $LOGPATH/mos_tf
+echo '## TF control logs (Errors/Warnings)' >> $LOGPATH/mos_tf
 grep tf-control- $LOGPATH/files |grep log > $LOGPATH/mos-tf-control
 while read -r line; do printf "# $line:"; echo ""; grep -E 'ERR|WARN' $line |sed -r '/^\s*$/d' ; echo ""; done < $LOGPATH/mos-tf-control >> $LOGPATH/mos_tf
 echo "" >> $LOGPATH/mos_tf
@@ -436,6 +436,10 @@ echo "" >> $LOGPATH/mos_tf
 echo '## TF vrouter logs (Errors/Warnings)' >> $LOGPATH/mos_tf
 grep tf-vrouter- $LOGPATH/files |grep log > $LOGPATH/mos-tf-vrouter
 while read -r line; do printf "# $line:"; echo ""; grep -E 'ERR|WARN' $line |sed -r '/^\s*$/d' ; echo ""; done < $LOGPATH/mos-tf-vrouter >> $LOGPATH/mos_tf
+echo "" >> $LOGPATH/mos_tf
+echo '## TF redis logs (Errors/Warnings)' >> $LOGPATH/mos_tf
+grep tf-redis files |grep log > $LOGPATH/mos-tf-redis
+while read -r line; do printf "# $line:"; echo ""; grep -Ei 'ERR|WARN' $line |sed -r '/^\s*$/d' ; echo ""; done < $LOGPATH/mos-tf-redis >> $LOGPATH/mos_tf
 echo "" >> $LOGPATH/mos_tf
 echo '## TF cassandra-config logs (Errors/Warnings)' >> $LOGPATH/mos_tf
 grep tf-cassandra-config $LOGPATH/files |grep log > $LOGPATH/mos-tf-cassandra-config
