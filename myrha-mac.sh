@@ -304,6 +304,10 @@ if [[ -n "$MOSNAME" ]] ; then
 echo "Gathering MOS Openstack details and logs..."
 echo "################# [MOS OPENSTACK DETAILS] #################" > $LOGPATH/mos_openstack
 echo "" >> $LOGPATH/mos_openstack
+echo "## OSDPL LCM status details:" >> $LOGPATH/mos_openstack
+printf '# ' >> $LOGPATH/mos_openstack; ls ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml >> $LOGPATH/mos_openstack
+sed -n '/    osdpl:/,/    services:/p' ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |head -n -1 >> $LOGPATH/mos_openstack
+echo "" >> $LOGPATH/mos_openstack
 echo "## OSDPL details:" >> $LOGPATH/mos_openstack
 printf '# ' >> $LOGPATH/mos_openstack; ls ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeployments/*.yaml >> $LOGPATH/mos_openstack
 sed -n '/  spec:/,/  status:/p' ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeployments/*.yaml |head -n 1 >> $LOGPATH/mos_openstack
