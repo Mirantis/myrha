@@ -56,7 +56,7 @@ else
     echo "MOS cluster not found"
 fi
 if [[ -n "$MCCNAME" ]] ; then
-    grep -m1 "    namespace: " $(ls ./$MCCNAME/objects/namespaced/*/cluster.k8s.io/clusters/$MOSNAME.yaml 2> /dev/null) |awk '{print $2}' 2> /dev/null 1> $LOGPATH/mos-cluster-namespace
+    grep -m1 "    namespace: " $(ls ./$MCCNAME/objects/namespaced/*/cluster.k8s.io/clusters/*.yaml |grep -v default 2> /dev/null) |awk '{print $2}' 2> /dev/null 1> $LOGPATH/mos-cluster-namespace
     MOSNAMESPACE=$(cat $LOGPATH/mos-cluster-namespace)
     echo "MOS namespace found"
 else
