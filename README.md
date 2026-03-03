@@ -89,8 +89,6 @@ https://docs.mirantis.com/mke/3.7/release-notes/3-7-28/known-issues.html
 ====================================================
 --- Field: [ca.cert] ---
 -----BEGIN CERTIFICATE-----
-MIIDXjCCAkagAwIBAgIRAL6YkaV0tLwOVLNEJtYFSgMwDQYJKoZIhvcNAQELBQAw
-OTE3MDUGA1UEAxMudHVuZ3N0ZW5mYWJyaWMtb3BlcmF0b3Itd2ViaG9vay1zZXJ2
 (...)
 -----END CERTIFICATE-----
 
