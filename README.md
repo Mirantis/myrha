@@ -41,3 +41,9 @@ and uncommenting the following ones:<br>
 #nvim -R -p $LOGPATH/*.yaml
 ```
 
+# Features
+
+- MOS/MCC cluster sumary with a directly link to release notes<br>
+- Cluster WARNING and ERROR event messages ordered by date<br>
+- Mariadb logs sorted and filtered only with error messages<br>
+- Certificate analysis with MD5 checks between certs and keys. Myrha will also validate the cert against the CA<br>
