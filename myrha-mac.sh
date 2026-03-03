@@ -23,6 +23,106 @@ then
     brew install sublime-text 2> /dev/null
     exit 1
 fi
+if ! command -v yq 2>&1 >/dev/null
+then
+    echo "the command yq could not be found. Installing"
+    brew install yq 2> /dev/null 
+    exit 1
+fi
+
+audit_k8s_secret() {
+    local YAML_FILE="$1"
+    
+    if [[ -z "$YAML_FILE" || ! -f "$YAML_FILE" ]]; then
+        echo "❌ Error: File '$YAML_FILE' not found."
+        return 1
+    fi
+
+    local TMP_DIR=$(mktemp -d)
+    local IS_WRAPPED=$(yq eval 'has("Object")' "$YAML_FILE" 2>/dev/null)
+    local DATA_PATH=".data"
+    [[ "$IS_WRAPPED" == "true" ]] && DATA_PATH=".Object.data"
+
+    local KEYS=$(yq eval "$DATA_PATH | keys | .[]" "$YAML_FILE" 2>/dev/null)
+    [[ -z "$KEYS" ]] && { rm -rf "$TMP_DIR"; return 1; }
+
+    echo "===================================================="
+    echo "🔍 AUDIT REPORT: $(basename "$YAML_FILE")"
+    echo "===================================================="
+
+    local LEAF_CERT=""
+    local CA_CERT=""
+    local PRIVATE_KEY=""
+
+    for KEY in $KEYS; do
+        local VAL=$(yq eval "$DATA_PATH.\"$KEY\"" "$YAML_FILE" | tr -d '[:space:]')
+        local TARGET_FILE="$TMP_DIR/$KEY"
+        echo "$VAL" | base64 -d > "$TARGET_FILE" 2>/dev/null
+        
+        local CONTENT_TYPE=$(grep -m 1 "BEGIN" "$TARGET_FILE")
+        echo "--- Field: [$KEY] ---"
+        
+        if [[ "$CONTENT_TYPE" == *"PRIVATE KEY"* ]]; then
+            PRIVATE_KEY="$TARGET_FILE"
+            cat "$TARGET_FILE"
+            echo -e "\n----------------------------------------------------"
+            local K_MD5=$(openssl rsa -noout -modulus -in "$TARGET_FILE" 2>/dev/null | openssl md5 | awk '{print $NF}')
+            echo "🔑 Key Modulus MD5: $K_MD5"
+
+        elif [[ "$CONTENT_TYPE" == *"CERTIFICATE"* ]]; then
+            cat "$TARGET_FILE"
+            echo -e "\n----------------------------------------------------"
+            
+            local CN=$(openssl x509 -noout -subject -in "$TARGET_FILE" -nameopt RFC2253 | sed 's/.*CN=//;s/,.*//')
+            local EXPIRY=$(openssl x509 -noout -enddate -in "$TARGET_FILE" | cut -d= -f2)
+            local ISSUER=$(openssl x509 -noout -issuer -in "$TARGET_FILE" -nameopt RFC2253)
+            local SUBJECT=$(openssl x509 -noout -subject -in "$TARGET_FILE" -nameopt RFC2253)
+            local C_MD5=$(openssl x509 -noout -modulus -in "$TARGET_FILE" | openssl md5 | awk '{print $NF}')
+            local SAN=$(openssl x509 -noout -ext subjectAltName -in "$TARGET_FILE" 2>/dev/null | tail -n +2 | sed 's/^[[:space:]]*//')
+
+            echo "📋 CN:      $CN"
+            echo "🌐 SAN:     ${SAN:-None}"
+            echo "📅 Expires: $EXPIRY"
+            echo "🔢 Cert Modulus MD5: $C_MD5"
+
+            if [[ "$KEY" == *"ca"* || "$ISSUER" == "$SUBJECT" ]]; then
+                CA_CERT="$TARGET_FILE"
+                echo "🏢 Role:    CA/Root Certificate"
+            else
+                LEAF_CERT="$TARGET_FILE"
+                echo "🌿 Role:    Leaf/Server Certificate"
+            fi
+        fi
+        echo ""
+    done
+
+    echo "===================================================="
+    echo "⚖️  FINAL VALIDATIONS"
+    echo "===================================================="
+
+    # 1. Private Key vs Leaf Certificate Match
+    printf "Match (Key <-> Leaf): "
+    if [[ -n "$LEAF_CERT" && -n "$PRIVATE_KEY" ]]; then
+        local FINAL_C_MD5=$(openssl x509 -noout -modulus -in "$LEAF_CERT" | openssl md5 | awk '{print $NF}')
+        local FINAL_K_MD5=$(openssl rsa -noout -modulus -in "$PRIVATE_KEY" 2>/dev/null | openssl md5 | awk '{print $NF}')
+        [[ "$FINAL_C_MD5" == "$FINAL_K_MD5" ]] && echo "✅ VALID" || echo "❌ MISMATCH"
+    else
+        echo "ℹ️  SKIPPED (Missing either Private Key or Leaf Cert)"
+    fi
+
+    # 2. Trust Chain Validation
+    printf "Chain (Leaf <-> CA):  "
+    if [[ -n "$LEAF_CERT" && -n "$CA_CERT" ]]; then
+        local VERIFY_OUT=$(openssl verify -CAfile "$CA_CERT" "$LEAF_CERT" 2>&1)
+        [[ "$VERIFY_OUT" == *"OK"* ]] && echo "✅ VERIFIED" || echo "❌ FAILED ($VERIFY_OUT)"
+    else
+        echo "ℹ️  SKIPPED (Missing either CA Cert or Leaf Cert)"
+    fi
+
+    rm -rf "$TMP_DIR"
+    echo "===================================================="
+    echo ""
+}
 
 echo "Generating report. This operation may take several minutes... Please wait."
 rm $LOGPATH/* 2> /dev/null
@@ -366,6 +466,49 @@ printf '# ' >> $LOGPATH/mos_mariadb; ls ./$MOSNAME/objects/namespaced/openstack/
 grep -E 'ERR|WARN' ./$MOSNAME/objects/namespaced/openstack/core/pods/mariadb-server-2/mariadb.log |sed -r '/^\s*$/d'  >> $LOGPATH/mos_mariadb
 fi
 
+if [[ -n "$MOSNAME" ]]; then
+  echo "Gathering MOS certificates..."
+  echo "################# [MOS CERTIFICATE DETAILS] #################" >$LOGPATH/mos_certs
+  echo "" >>$LOGPATH/mos_certs
+  echo "## TF certificates:" >>$LOGPATH/mos_certs
+  printf '# ' >>$LOGPATH/mos_certs
+  ls ./$MOSNAME/objects/namespaced/tf/core/secrets/tungstenfabric-operator-webhook-server-cert.yaml >>$LOGPATH/mos_certs
+  audit_k8s_secret "./$MOSNAME/objects/namespaced/tf/core/secrets/tungstenfabric-operator-webhook-server-cert.yaml" >>$LOGPATH/mos_certs
+  printf '# ' >>$LOGPATH/mos_certs
+  ls ./$MOSNAME/objects/namespaced/tf/core/secrets/tfwebui-tls-public.yaml >>$LOGPATH/mos_certs
+  audit_k8s_secret "./$MOSNAME/objects/namespaced/tf/core/secrets/tfwebui-tls-public.yaml" >>$LOGPATH/mos_certs
+  echo "" >>$LOGPATH/mos_certs
+  echo "## OIDC certificates:" >>$LOGPATH/mos_certs
+  printf '# ' >>$LOGPATH/mos_certs
+  ls ./$MOSNAME/objects/namespaced/openstack/core/secrets/oidc-cert.yaml >>$LOGPATH/mos_certs
+  audit_k8s_secret "./$MOSNAME/objects/namespaced/openstack/core/secrets/oidc-cert.yaml" >>$LOGPATH/mos_certs
+  echo "" >>$LOGPATH/mos_certs
+  echo "## Octavia certificates:" >>$LOGPATH/mos_certs
+  printf '# ' >>$LOGPATH/mos_certs
+  ls ./$MOSNAME/objects/namespaced/openstack/core/secrets/octavia-amphora-tls-certs.yaml >>$LOGPATH/mos_certs
+  audit_k8s_secret "./$MOSNAME/objects/namespaced/openstack/core/secrets/octavia-amphora-tls-certs.yaml" >>$LOGPATH/mos_certs
+  echo "" >>$LOGPATH/mos_certs
+  echo "## Horizon certificates:" >>$LOGPATH/mos_certs
+  printf '# ' >>$LOGPATH/mos_certs
+  ls ./$MOSNAME/objects/namespaced/openstack/core/secrets/horizon-tls-public.yaml >>$LOGPATH/mos_certs
+  audit_k8s_secret "./$MOSNAME/objects/namespaced/openstack/core/secrets/horizon-tls-public.yaml" >>$LOGPATH/mos_certs
+  echo "" >>$LOGPATH/mos_certs
+  echo "## Keystone certificates:" >>$LOGPATH/mos_certs
+  printf '# ' >>$LOGPATH/mos_certs
+  ls ./$MOSNAME/objects/namespaced/openstack/core/secrets/keystone-tls-public.yaml >>$LOGPATH/mos_certs
+  audit_k8s_secret "./$MOSNAME/objects/namespaced/openstack/core/secrets/keystone-tls-public.yaml" >>$LOGPATH/mos_certs
+  echo "" >>$LOGPATH/mos_certs
+  echo "## CEPH RGW certificates:" >>$LOGPATH/mos_certs
+  printf '# ' >>$LOGPATH/mos_certs
+  ls ./$MOSNAME/objects/namespaced/rook-ceph/core/secrets/rgw-ssl-certificate.yaml >>$LOGPATH/mos_certs
+  audit_k8s_secret "./$MOSNAME/objects/namespaced/rook-ceph/core/secrets/rgw-ssl-certificate.yaml" >>$LOGPATH/mos_certs
+  echo "" >>$LOGPATH/mos_certs
+  echo "## Stacklight certificates:" >>$LOGPATH/mos_certs
+  printf '# ' >>$LOGPATH/mos_certs
+  ls ./$MOSNAME/objects/namespaced/stacklight/core/secrets/oidc-cert.yaml >>$LOGPATH/mos_certs
+  audit_k8s_secret "./$MOSNAME/objects/namespaced/stacklight/core/secrets/oidc-cert.yaml" >>$LOGPATH/mos_certs
+fi
+
 if [[ -n "$MCCNAME" ]] ; then
 echo "Gathering MOS Ipamhost details..."
 echo "################# [MOS IPAMHOST DETAILS] #################" > $LOGPATH/mos_ipamhost
@@ -701,90 +844,30 @@ printf '# ' >> $LOGPATH/mcc_mariadb; ls ./$MCCNAME/objects/namespaced/kaas/core/
 grep -E 'ERR|WARN' ./$MCCNAME/objects/namespaced/kaas/core/pods/mariadb-server-2/mariadb.log |sed -r '/^\s*$/d'  >> $LOGPATH/mcc_mariadb
 fi
 
-if [[ -n "$MCCNAME" ]] ; then
-echo "Gathering MCC certificates..."
-echo "################# [MCC CERTIFICATE DETAILS] #################" > $LOGPATH/mcc_certs
-echo "" >> $LOGPATH/mcc_certs
-echo "## UI certificates:" >> $LOGPATH/mcc_certs
-printf '# ' >> $LOGPATH/mcc_certs; ls ./$MCCNAME/objects/namespaced/kaas/core/secrets/ui-tls-certs.yaml >> $LOGPATH/mcc_certs
-echo "## tls.crt:" >> $LOGPATH/mcc_certs
-grep "    tls.crt: " ./$MCCNAME/objects/namespaced/kaas/core/secrets/ui-tls-certs.yaml |sed "s|    tls.crt: ||g" |base64 -d |sed -r '/^\s*$/d' > $LOGPATH/mcc-ui-crt
-grep "    tls.crt: " ./$MCCNAME/objects/namespaced/kaas/core/secrets/ui-tls-certs.yaml |sed "s|    tls.crt: ||g" |base64 -d |sed -r '/^\s*$/d' >> $LOGPATH/mcc_certs
-echo "" >> $LOGPATH/mcc_certs
-echo "## tls.key:" >> $LOGPATH/mcc_certs
-grep "    tls.key: " ./$MCCNAME/objects/namespaced/kaas/core/secrets/ui-tls-certs.yaml |sed "s|    tls.key: ||g" |base64 -d |sed -r '/^\s*$/d' > $LOGPATH/mcc-ui-key
-grep "    tls.key: " ./$MCCNAME/objects/namespaced/kaas/core/secrets/ui-tls-certs.yaml |sed "s|    tls.key: ||g" |base64 -d |sed -r '/^\s*$/d' >> $LOGPATH/mcc_certs
-echo "" >> $LOGPATH/mcc_certs
-echo "## UI Key and certificate verification match:" >> $LOGPATH/mcc_certs
-echo "# openssl rsa -check -noout -in tls.key" >> $LOGPATH/mcc_certs
-openssl rsa -check -noout -in $LOGPATH/mcc-ui-key >> $LOGPATH/mcc_certs
-echo "# openssl rsa -modulus -noout -in tls.key |openssl md5" >> $LOGPATH/mcc_certs
-openssl rsa -modulus -noout -in $LOGPATH/mcc-ui-key |openssl md5 >> $LOGPATH/mcc_certs
-echo "# openssl x509 -modulus -noout -in tls.crt |openssl md5" >> $LOGPATH/mcc_certs
-openssl x509 -modulus -noout -in $LOGPATH/mcc-ui-crt |openssl md5 >> $LOGPATH/mcc_certs
-echo "## Is the UI certificate still valid?" >> $LOGPATH/mcc_certs
-echo "# openssl x509 -enddate -noout -in tls.crt" >> $LOGPATH/mcc_certs
-openssl x509 -enddate -noout -in $LOGPATH/mcc-ui-crt >> $LOGPATH/mcc_certs
-echo "" >> $LOGPATH/mcc_certs
-echo "## MCC CA certificates:" >> $LOGPATH/mcc_certs
-printf '# ' >> $LOGPATH/mcc_certs; ls ./$MCCNAME/objects/namespaced/kaas/core/secrets/mcc-ca-cert.yaml >> $LOGPATH/mcc_certs
-echo "## tls.crt:" >> $LOGPATH/mcc_certs
-grep "    tls.crt: " ./$MCCNAME/objects/namespaced/kaas/core/secrets/mcc-ca-cert.yaml |sed "s|    tls.crt: ||g" |base64 -d |sed -r '/^\s*$/d' > $LOGPATH/mcc-ca-crt
-grep "    tls.crt: " ./$MCCNAME/objects/namespaced/kaas/core/secrets/mcc-ca-cert.yaml |sed "s|    tls.crt: ||g" |base64 -d |sed -r '/^\s*$/d' >> $LOGPATH/mcc_certs
-echo "## tls.key:" >> $LOGPATH/mcc_certs
-grep "    tls.key: " ./$MCCNAME/objects/namespaced/kaas/core/secrets/mcc-ca-cert.yaml |sed "s|    tls.key: ||g" |base64 -d |sed -r '/^\s*$/d' > $LOGPATH/mcc-ca-key
-grep "    tls.key: " ./$MCCNAME/objects/namespaced/kaas/core/secrets/mcc-ca-cert.yaml |sed "s|    tls.key: ||g" |base64 -d |sed -r '/^\s*$/d' >> $LOGPATH/mcc_certs
-echo "## CA Key and certificate verification match:" >> $LOGPATH/mcc_certs
-echo "# openssl rsa -check -noout -in tls.key" >> $LOGPATH/mcc_certs
-openssl rsa -check -noout -in $LOGPATH/mcc-ca-key >> $LOGPATH/mcc_certs
-echo "# openssl rsa -modulus -noout -in tls.key |openssl md5" >> $LOGPATH/mcc_certs
-openssl rsa -modulus -noout -in $LOGPATH/mcc-ca-key |openssl md5 >> $LOGPATH/mcc_certs
-echo "# openssl x509 -modulus -noout -in tls.crt |openssl md5" >> $LOGPATH/mcc_certs
-openssl x509 -modulus -noout -in $LOGPATH/mcc-ca-crt |openssl md5 >> $LOGPATH/mcc_certs
-echo "## Is the MCC CA certificate still valid?" >> $LOGPATH/mcc_certs
-echo "# openssl x509 -enddate -noout -in tls.crt" >> $LOGPATH/mcc_certs
-openssl x509 -enddate -noout -in $LOGPATH/mcc-ca-crt >> $LOGPATH/mcc_certs
-echo "" >> $LOGPATH/mcc_certs
-echo "## Keycloak certificates:" >> $LOGPATH/mcc_certs
-printf '# ' >> $LOGPATH/mcc_certs; ls ./$MCCNAME/objects/namespaced/kaas/core/secrets/keycloak-tls-certs.yaml >> $LOGPATH/mcc_certs
-echo "## tls.crt:" >> $LOGPATH/mcc_certs
-grep "    tls.crt: " ./$MCCNAME/objects/namespaced/kaas/core/secrets/keycloak-tls-certs.yaml |sed "s|    tls.crt: ||g" |base64 -d |sed -r '/^\s*$/d' > $LOGPATH/mcc-keycloak-crt
-grep "    tls.crt: " ./$MCCNAME/objects/namespaced/kaas/core/secrets/keycloak-tls-certs.yaml |sed "s|    tls.crt: ||g" |base64 -d |sed -r '/^\s*$/d' >> $LOGPATH/mcc_certs
-echo "" >> $LOGPATH/mcc_certs
-echo "## tls.key:" >> $LOGPATH/mcc_certs
-grep "    tls.key: " ./$MCCNAME/objects/namespaced/kaas/core/secrets/keycloak-tls-certs.yaml |sed "s|    tls.key: ||g" |base64 -d |sed -r '/^\s*$/d' > $LOGPATH/mcc-keycloak-key
-grep "    tls.key: " ./$MCCNAME/objects/namespaced/kaas/core/secrets/keycloak-tls-certs.yaml |sed "s|    tls.key: ||g" |base64 -d |sed -r '/^\s*$/d' >> $LOGPATH/mcc_certs
-echo "" >> $LOGPATH/mcc_certs
-echo "## Keycloak Key and certificate verification match:" >> $LOGPATH/mcc_certs
-echo "# openssl rsa -check -noout -in tls.key" >> $LOGPATH/mcc_certs
-openssl rsa -check -noout -in $LOGPATH/mcc-keycloak-key >> $LOGPATH/mcc_certs
-echo "# openssl rsa -modulus -noout -in tls.key |openssl md5" >> $LOGPATH/mcc_certs
-openssl rsa -modulus -noout -in $LOGPATH/mcc-keycloak-key |openssl md5 >> $LOGPATH/mcc_certs
-echo "# openssl x509 -modulus -noout -in tls.crt |openssl md5" >> $LOGPATH/mcc_certs
-openssl x509 -modulus -noout -in $LOGPATH/mcc-keycloak-crt |openssl md5 >> $LOGPATH/mcc_certs
-echo "## Is the Keycloak certificate still valid?" >> $LOGPATH/mcc_certs
-echo "# openssl x509 -enddate -noout -in tls.crt" >> $LOGPATH/mcc_certs
-openssl x509 -enddate -noout -in $LOGPATH/mcc-keycloak-crt >> $LOGPATH/mcc_certs
-echo "" >> $LOGPATH/mcc_certs
-echo "## OIDC certificates:" >> $LOGPATH/mcc_certs
-printf '# ' >> $LOGPATH/mcc_certs; ls ./$MCCNAME/objects/namespaced/kaas/core/secrets/oidc-ca-cert.yaml >> $LOGPATH/mcc_certs
-echo "## tls.crt:" >> $LOGPATH/mcc_certs
-grep "    tls.crt: " ./$MCCNAME/objects/namespaced/kaas/core/secrets/oidc-ca-cert.yaml |sed "s|    tls.crt: ||g" |base64 -d > $LOGPATH/mcc-oidc-crt
-grep "    tls.crt: " ./$MCCNAME/objects/namespaced/kaas/core/secrets/oidc-ca-cert.yaml |sed "s|    tls.crt: ||g" |base64 -d >> $LOGPATH/mcc_certs
-echo "" >> $LOGPATH/mcc_certs
-echo "## tls.key:" >> $LOGPATH/mcc_certs
-grep "    tls.key: " ./$MCCNAME/objects/namespaced/kaas/core/secrets/oidc-ca-cert.yaml |sed "s|    tls.key: ||g" |base64 -d > $LOGPATH/mcc-oidc-key
-grep "    tls.key: " ./$MCCNAME/objects/namespaced/kaas/core/secrets/oidc-ca-cert.yaml |sed "s|    tls.key: ||g" |base64 -d >> $LOGPATH/mcc_certs
-echo "## OIDC Key and certificate verification match:" >> $LOGPATH/mcc_certs
-echo "# openssl rsa -check -noout -in tls.key" >> $LOGPATH/mcc_certs
-openssl rsa -check -noout -in $LOGPATH/mcc-oidc-key >> $LOGPATH/mcc_certs
-echo "# openssl rsa -modulus -noout -in tls.key |openssl md5" >> $LOGPATH/mcc_certs
-openssl rsa -modulus -noout -in $LOGPATH/mcc-oidc-key |openssl md5 >> $LOGPATH/mcc_certs
-echo "# openssl x509 -modulus -noout -in tls.crt |openssl md5" >> $LOGPATH/mcc_certs
-openssl x509 -modulus -noout -in $LOGPATH/mcc-oidc-crt |openssl md5 >> $LOGPATH/mcc_certs
-echo "## Is the OIDC certificate still valid?" >> $LOGPATH/mcc_certs
-echo "# openssl x509 -enddate -noout -in tls.crt" >> $LOGPATH/mcc_certs
-openssl x509 -enddate -noout -in $LOGPATH/mcc-oidc-crt >> $LOGPATH/mcc_certs
+if [[ -n "$MCCNAME" ]]; then
+  echo "Gathering MCC certificates..."
+  echo "################# [MCC CERTIFICATE DETAILS] #################" >$LOGPATH/mcc_certs
+  echo "" >>$LOGPATH/mcc_certs
+  echo "## UI certificates:" >>$LOGPATH/mcc_certs
+  printf '# ' >>$LOGPATH/mcc_certs
+  ls ./$MCCNAME/objects/namespaced/kaas/core/secrets/ui-tls-certs.yaml >>$LOGPATH/mcc_certs
+  audit_k8s_secret "./$MCCNAME/objects/namespaced/kaas/core/secrets/ui-tls-certs.yaml" >>$LOGPATH/mcc_certs
+  printf '# ' >>$LOGPATH/mcc_certs
+  ls ./$MCCNAME/objects/namespaced/kaas/core/secrets/mcc-ca-cert.yaml >>$LOGPATH/mcc_certs
+  audit_k8s_secret "./$MCCNAME/objects/namespaced/kaas/core/secrets/mcc-ca-cert.yaml" >>$LOGPATH/mcc_certs
+  echo "" >>$LOGPATH/mcc_certs
+  echo "## Keycloak certificates:" >>$LOGPATH/mcc_certs
+  printf '# ' >>$LOGPATH/mcc_certs
+  ls ./$MCCNAME/objects/namespaced/kaas/core/secrets/keycloak-tls-certs.yaml >>$LOGPATH/mcc_certs
+  audit_k8s_secret "./$MCCNAME/objects/namespaced/kaas/core/secrets/keycloak-tls-certs.yaml" >>$LOGPATH/mcc_certs
+  echo "## OIDC certificates:" >>$LOGPATH/mcc_certs
+  printf '# ' >>$LOGPATH/mcc_certs
+  ls ./$MCCNAME/objects/namespaced/kaas/core/secrets/oidc-ca-cert.yaml >>$LOGPATH/mcc_certs
+  audit_k8s_secret "./$MCCNAME/objects/namespaced/kaas/core/secrets/oidc-ca-cert.yaml" >>$LOGPATH/mcc_certs
+  echo "## Policy controller certificates:" >>$LOGPATH/mcc_certs
+  printf '# ' >>$LOGPATH/mcc_certs
+  ls ./$MCCNAME/objects/namespaced/kaas/core/secrets/policy-tls-certs.yaml >>$LOGPATH/mcc_certs
+  audit_k8s_secret "./$MCCNAME/objects/namespaced/kaas/core/secrets/policy-tls-certs.yaml" >>$LOGPATH/mcc_certs
 fi
 
 if [[ -n "$MCCNAME" ]] ; then
