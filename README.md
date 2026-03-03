@@ -4,7 +4,7 @@
 Summarize supportdump files from Mirantis MCC/MOS clusters<br>
 
 # Features
-- MKE, MOS and MCC cluster summary with a directly link to release notes and Jira tickets<br>
+- ***MKE, MOS and MCC cluster summary with a directly link to release notes and Jira tickets. Example:***
 ```
 ################# [MCC CLUSTER DETAILS] #################
 
@@ -19,7 +19,7 @@ https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.5%20
 https://docs.mirantis.com/mke/3.7/release-notes/3-7-28.html
 https://docs.mirantis.com/mke/3.7/release-notes/3-7-28/known-issues.html
 ```
-- Cluster WARNING and ERROR event messages ordered by date/time<br>
+- ***Cluster WARNING and ERROR event messages ordered by time and date. Example:***
 ```
 ################# [MCC EVENTS (WARNING+ERRORS)] #################
 
@@ -33,7 +33,7 @@ https://docs.mirantis.com/mke/3.7/release-notes/3-7-28/known-issues.html
 2026-02-17T07:49:10+01:00	Warning	mos	Cluster	mos	ClusterKubernetesNotReady	not ready: deployments: stacklight/stacklight-helm-controller got 2/3 replicas; statefulSets: stacklight/opensearch-master got 2/3 replicas, stacklight/patroni-13 got 
 ```
 
-- Mariadb logs sorted and filtered only with error messages and configmap in the same file for quick overview<br>
+***- Mariadb logs sorted and filtered only with error messages and configmap in the same file for quick overview. Example:***
 ```
 ################# [MCC MARIADB DETAILS] #################
 
@@ -78,7 +78,7 @@ https://docs.mirantis.com/mke/3.7/release-notes/3-7-28/known-issues.html
 2026-02-23 15:47:18,951 - OpenStack-Helm Mariadb - WARNING - Collision writing configmap: (409)
 ```
 
-- Certificate analysis with MD5 checks between certs and keys. Myrha will also validate the cert against the CA<br>
+- ***Certificate analysis with MD5 checks between certs and keys. Myrha will also validate the cert against the CA. Example:***
 ```
 ################# [MOS CERTIFICATE DETAILS] #################
 
