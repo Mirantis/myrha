@@ -70,170 +70,154 @@ fi
 #find -path "*/namespaced/rook-ceph/apps/deployments/*rgw*" |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g' |sed -r '/^\s*$/d' > $LOGPATH/ceph-rgw
 
 # MOS Analysis
-if [[ -n "$MOSNAME" ]] ; then
-echo "Gathering MOS cluster details..."
-echo "################# [MOS CLUSTER DETAILS] #################" > $LOGPATH/mos_cluster
-MOSVER1=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |awk '{print substr($0,16,2)}')
-MOSVER2=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |awk '{print substr($0,19,1)}')
-MOSVER3=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |awk '{print substr($0,21,1)}')
-MOSVER4=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |awk '{print substr($0,23,2)}')
-MOSVER5=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |awk '{print substr($0,25,2)}')
-MOSVER6=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |awk '{print substr($0,27,2)}')
-printf "## MOS release details (Managed): $MOSVER1.$MOSVER2.$MOSVER3+$MOSVER4$MOSVER5$MOSVER6" >> $LOGPATH/mos_cluster
-echo "" >> $LOGPATH/mos_cluster
-echo "https://docs.mirantis.com/container-cloud/latest/release-notes/cluster-releases/$MOSVER1-x/$MOSVER1-$MOSVER2-x/$MOSVER1-$MOSVER2-$MOSVER3.html" >> $LOGPATH/mos_cluster
-echo "https://docs.mirantis.com/mosk/latest/release-notes/$MOSVER4$MOSVER5-series/$MOSVER4$MOSVER5$MOSVER6.html" >> $LOGPATH/mos_cluster
-echo "" >> $LOGPATH/mos_cluster
-printf "## MOS Bugs - $MOSVER4$MOSVER5$MOSVER6": >> $LOGPATH/mos_cluster
-echo "" >> $LOGPATH/mos_cluster
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.1.1" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.2%20%2F%20MOSK%2023.1.1%20%28Patch%20release%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.1.2" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.3%20%2F%20MOSK%2023.1.2%20%28Patch%20release%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.1.3" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.4%20%2F%20MOSK%2023.1.3%20%28Patch%20release%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.1.4" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.5%20%2F%20MOSK%2023.1.4%20%28Patch%20release%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.2.1" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.3%20%2F%20MOSK%2023.2.1%20%28Patch%20release1%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.2.2" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.4%20%2F%20MOSK%2023.2.2%20%28Patch%20release2%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.2.3" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.5%20%2F%20MOSK%2023.2.3%20%28Patch%20release3%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.3" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20IN%20%28%22KaaS%202.25%20%2F%20MOSK%2023.3%22%2C%20%22KaaS%202.25.x%20%2F%20MOSK%2023.3.x%22%29" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.3.1" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.1%20%2F%20MOSK%2023.3.1%20%28Patch%20release1%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.3.2" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.2%20%2F%20MOSK%2023.3.2%20%28Patch%20release2%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.3.3" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.3%20%2F%20MOSK%2023.3.3%20%28Patch%20release3%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.3.4" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.4%20%2F%20MOSK%2023.3.4%20%28Patch%20release4%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "23.3" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.x%20%2F%20MOSK%2023.3.x%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.1" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26%20%2F%20MOSK%2024.1%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.1.1" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.1%20%2F%20MOSK%2024.1.1%20%28Patch%20release1%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.1.2" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.2%20%2F%20MOSK%2024.1.2%20%28Patch%20release2%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.1.3" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.3%20%2F%20MOSK%2024.1.3%20%28Patch%20release3%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.1.4" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.4%20%2F%20MOSK%2024.1.4%20%28Patch%20release4%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.1.5" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.5%20%2F%20MOSK%2024.1.5%20%28Patch%20release5%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.1" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.x%20%2F%20MOSK%2024.1.x%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.2" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20IN%20%28%22KaaS%202.27%20%2F%20MOSK%2024.2%22%2C%20%22KaaS%202.27.x%20%2F%20MOSK%2024.2.x%22%29" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.1.6" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.1%20%2F%20MOSK%2024.1.6%20%28Patch%20release6%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.1.7" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.2%20%2F%20MOSK%2024.1.7%20%28Patch%20release7%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.2.1" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.3%20%2F%20MOSK%2024.2.1%20%28Patch%20release1%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.2.2" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.4%20%2F%20MOSK%2024.2.2%20%28Patch%20release2%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.3" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20IN%20%28%22KaaS%202.28.x%20%2F%20MOSK%2024.3.x%22%2C%20%22KaaS%202.28%20%2F%20MOSK%2024.3%22%29" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.2.3" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.1%20%2F%20MOSK%2024.2.3%20%28Patch%20release3%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.2.4" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.2%20%2F%20MOSK%2024.2.4%20%28Patch%20release4%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.2.5" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.3%20%2F%20MOSK%2024.2.5%20%28Patch%20release5%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.3.1" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.4%20%2F%20MOSK%2024.3.1%20%28Patch%20release1%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.3.2" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.5%20%2F%20MOSK%2024.3.2%20%28Patch%20release2%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.3" ]]
-then
-   echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.x%20%2F%20MOSK%2024.3.x%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "25.1" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20IN%20%28%22KaaS%202.29%20%2F%20MOSK%2025.1%22%2C%20%22KaaS%202.29.x%20%2F%20MOSK%2025.1.x%22%29" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.3.3" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.1%20%2F%20MOSK%2024.3.3%20%28Patch%20release3%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "24.3.4" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.2%20%2F%20MOSK%2024.3.4%20%28Patch%20release4%29%22" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "25.2" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20IN%20%28%22KaaS%202.30.x%20%2F%20MOSK%2025.2.x%22%2C%20%22KaaS%202.30%20%2F%20MOSK%2025.2%22%29" >> $LOGPATH/mos_cluster
-fi
-if [[ "$MOSVER4$MOSVER5$MOSVER6" == "26.1" ]]
-then
-   echo "https://mirantis.jira.com/issues/?jql=affectedversion%20IN%20%28%22KaaS%202.31%20%2F%20MOSK%2026.1%22%2C%202.31%29" >> $LOGPATH/mos_cluster
-fi
+if [[ -n "$MOSNAME" ]]; then
+  echo "Gathering MOS cluster details..."
+  echo "################# [MOS CLUSTER DETAILS] #################" >$LOGPATH/mos_cluster
+  MOSVER1=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |
+ sed 's/release\://' | sed -e 's/[[:space:]]//g' -e 's/+/./' |awk -F '.' '{print $1}')
+  MOSVER2=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |
+ sed 's/release\://' | sed -e 's/[[:space:]]//g' -e 's/+/./' |awk -F '.' '{print $2}')
+  MOSVER3=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |
+ sed 's/release\://' | sed -e 's/[[:space:]]//g' -e 's/+/./' |awk -F '.' '{print $3}')
+  MOSVER4=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |
+ sed 's/release\://' | sed -e 's/[[:space:]]//g' -e 's/+/./' |awk -F '.' '{print $4}')
+  MOSVER5=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |
+ sed 's/release\://' | sed -e 's/[[:space:]]//g' -e 's/+/./' |awk -F '.' '{print $5}')
+  MOSVER6=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |
+ sed 's/release\://' | sed -e 's/[[:space:]]//g' -e 's/+/./' |awk -F '.' '{print $6}')
+  printf "## MOS release details (Managed): $MOSVER1.$MOSVER2.$MOSVER3+$MOSVER4.$MOSVER5.$MOSVER6" >>$LOGPATH/mos_cluster
+  echo "" >>$LOGPATH/mos_cluster
+  if (( $(echo "$MOSVER4.$MOSVER5 >= 25.2" | bc -l) )); then
+    echo "https://docs.mirantis.com/mosk/25.2/release-notes/25.2-series/25.2.$MOSVER6.html" | sed 's/\.\././' >>$LOGPATH/mos_cluster
+  else
+    echo "https://docs.mirantis.com/mosk/25.1-and-earlier/release-notes/release-notes-mosk-old/$MOSVER4.$MOSVER5-series/$MOSVER4.$MOSVER5.$MOSVER6.html" | sed 's/\.\././' >>$LOGPATH/mos_cluster
+  fi
+  echo "" >>$LOGPATH/mos_cluster
+  printf "## MOS Bugs - $MOSVER4.$MOSVER5.$MOSVER6": >>$LOGPATH/mos_cluster
+  echo "" >>$LOGPATH/mos_cluster
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.1.1" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.2%20%2F%20MOSK%2023.1.1%20%28Patch%20release%29%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.1.2" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.3%20%2F%20MOSK%2023.1.2%20%28Patch%20release%29%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.1.3" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.4%20%2F%20MOSK%2023.1.3%20%28Patch%20release%29%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.1.4" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.5%20%2F%20MOSK%2023.1.4%20%28Patch%20release%29%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.2.1" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.3%20%2F%20MOSK%2023.2.1%20%28Patch%20release1%29%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.2.2" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.4%20%2F%20MOSK%2023.2.2%20%28Patch%20release2%29%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.2.3" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.5%20%2F%20MOSK%2023.2.3%20%28Patch%20release3%29%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.3." ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20IN%20%28%22KaaS%202.25%20%2F%20MOSK%2023.3%22%2C%20%22KaaS%202.25.x%20%2F%20MOSK%2023.3.x%22%29" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.3.1" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.1%20%2F%20MOSK%2023.3.1%20%28Patch%20release1%29%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.3.2" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.2%20%2F%20MOSK%2023.3.2%20%28Patch%20release2%29%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.3.3" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.3%20%2F%20MOSK%2023.3.3%20%28Patch%20release3%29%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.3.4" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.4%20%2F%20MOSK%2023.3.4%20%28Patch%20release4%29%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6"  == "24.1." ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26%20%2F%20MOSK%2024.1%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.1.1" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.1%20%2F%20MOSK%2024.1.1%20%28Patch%20release1%29%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.1.2" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.2%20%2F%20MOSK%2024.1.2%20%28Patch%20release2%29%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.1.3" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.3%20%2F%20MOSK%2024.1.3%20%28Patch%20release3%29%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.1.4" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.4%20%2F%20MOSK%2024.1.4%20%28Patch%20release4%29%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.1.5" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.5%20%2F%20MOSK%2024.1.5%20%28Patch%20release5%29%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.1.6" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.1%20%2F%20MOSK%2024.1.6%20%28Patch%20release6%29%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.1.7" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.2%20%2F%20MOSK%2024.1.7%20%28Patch%20release7%29%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.2." ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.27%20%2F%20MOSK%2024.2%22" >>$LOGPATH/mos_cluster
+  fi  
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.2.1" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.3%20%2F%20MOSK%2024.2.1%20%28Patch%20release1%29%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.2.2" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.4%20%2F%20MOSK%2024.2.2%20%28Patch%20release2%29%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.2.3" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.28.1%20%2F%20MOSK%2024.2.3%20(Patch%20release3)%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.2.4" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.28.2%20%2F%20MOSK%2024.2.4%20(Patch%20release4)%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.2.5" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.28.3%20%2F%20MOSK%2024.2.5%20(Patch%20release5)%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.3" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.28%20%2F%20MOSK%2024.3%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.3.1" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.4%20%2F%20MOSK%2024.3.1%20%28Patch%20release1%29%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.3.2" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.5%20%2F%20MOSK%2024.3.2%20%28Patch%20release2%29%22" >>$LOGPATH/mos_cluster
+  fi  
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.3.3" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.29.1%20%2F%20MOSK%2024.3.3%20(Patch%20release3)%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.3.4" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.2%20%2F%20MOSK%2024.3.4%20%28Patch%20release4%29%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.3.5" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.29.3%20%2F%20MOSK%2024.3.5%20(Patch%20release5)%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.3.6" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.29.4%20%2F%20MOSK%2024.3.6%20(Patch%20release6)%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "25.1." ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.5%20%2F%20MOSK%2025.2.5%20(Patch%20release5)%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "25.1.1" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.5%20%2F%20MOSK%2025.2.5%20(Patch%20release5)%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "25.2." ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30%20%2F%20MOSK%2025.2%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "25.2.1" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.1%20%2F%20MOSK%2025.2.1%20(Patch%20release1)%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "25.2.2" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.2%20%2F%20MOSK%2025.2.2%20(Patch%20release2)%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "25.2.3" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.3%20%2F%20MOSK%2025.2.3%20(Patch%20release3)%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "25.2.4" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.4%20%2F%20MOSK%2025.2.4%20(Patch%20release4)%22" >>$LOGPATH/mos_cluster
+  fi
+  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "25.2.5" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.5%20%2F%20MOSK%2025.2.5%20(Patch%20release5)%22" >>$LOGPATH/mos_cluster
+  fi
 echo "" >> $LOGPATH/mos_cluster
 echo "## Details and versions:" >> $LOGPATH/mos_cluster
 printf '# ' >> $LOGPATH/mos_cluster; ls ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml >> $LOGPATH/mos_cluster
@@ -418,7 +402,7 @@ echo "" >> $LOGPATH/mos_subnet
 fi
 
 if [[ -n "$MOSNAME" ]] && [[ -d $MOSNAME/objects/namespaced/tf ]]; then
-echo "Gathering TF details..."
+echo "Gathering MOS TF details..."
 echo "################# [MOS TF DETAILS] #################" > $LOGPATH/mos_tf
 grep ./$MOSNAME/objects/namespaced/tf $LOGPATH/files > $LOGPATH/mos-tf
 echo "" >> $LOGPATH/mos_tf
@@ -477,187 +461,186 @@ fi
 
 # MCC Analysis
 if [[ -n "$MCCNAME" ]] ; then
-echo "Gathering MCC cluster details..."
-echo "################# [MCC CLUSTER DETAILS] #################" > $LOGPATH/mcc_cluster
-MCCVER1=$(grep -m1 "release: kaas-" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml |awk '{print substr($0,25,1)}')
-MCCVER2=$(grep -m1 "release: kaas-" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml |awk '{print substr($0,27,2)}')
-MCCVER3=$(grep -m1 "release: kaas-" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml |awk '{print substr($0,30,1)}')
-echo "" >> $LOGPATH/mcc_cluster
-printf "## MCC Version release details: $MCCVER1.$MCCVER2.$MCCVER3" >> $LOGPATH/mcc_cluster
-echo "" >> $LOGPATH/mcc_cluster
-echo "https://docs.mirantis.com/container-cloud/latest/release-notes/releases/$MCCVER1-$MCCVER2-$MCCVER3.html" >> $LOGPATH/mcc_cluster
-echo "https://docs.mirantis.com/container-cloud/latest/release-notes/releases/$MCCVER1-$MCCVER2-$MCCVER3/known-$MCCVER1-$MCCVER2-$MCCVER3.html" >> $LOGPATH/mcc_cluster
-echo "" >> $LOGPATH/mcc_cluster
-printf "## MCC Bugs - $MCCVER1.$MCCVER2.$MCCVER3": >> $LOGPATH/mcc_cluster
-echo "" >> $LOGPATH/mcc_cluster
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.23.2" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.2%20%2F%20MOSK%2023.1.1%20%28Patch%20release%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.23.3" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.3%20%2F%20MOSK%2023.1.2%20%28Patch%20release%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.23.4" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.4%20%2F%20MOSK%2023.1.3%20%28Patch%20release%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.23.5" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.5%20%2F%20MOSK%2023.1.4%20%28Patch%20release%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.24.3" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.3%20%2F%20MOSK%2023.2.1%20%28Patch%20release1%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.24.4" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.4%20%2F%20MOSK%2023.2.2%20%28Patch%20release2%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.24.5" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.5%20%2F%20MOSK%2023.2.3%20%28Patch%20release3%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.25" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20IN%20%28%22KaaS%202.25%20%2F%20MOSK%2023.3%22%2C%20%22KaaS%202.25.x%20%2F%20MOSK%2023.3.x%22%29" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.25.1" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.1%20%2F%20MOSK%2023.3.1%20%28Patch%20release1%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.25.2" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.2%20%2F%20MOSK%2023.3.2%20%28Patch%20release2%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.25.3" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.3%20%2F%20MOSK%2023.3.3%20%28Patch%20release3%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.25.4" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.4%20%2F%20MOSK%2023.3.4%20%28Patch%20release4%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.25.4" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.x%20%2F%20MOSK%2023.3.x%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.26" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26%20%2F%20MOSK%2024.1%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.26.1" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.1%20%2F%20MOSK%2024.1.1%20%28Patch%20release1%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.26.2" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.2%20%2F%20MOSK%2024.1.2%20%28Patch%20release2%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.26.3" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.3%20%2F%20MOSK%2024.1.3%20%28Patch%20release3%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.26.4" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.4%20%2F%20MOSK%2024.1.4%20%28Patch%20release4%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.26.5" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.5%20%2F%20MOSK%2024.1.5%20%28Patch%20release5%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.26" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.x%20%2F%20MOSK%2024.1.x%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.27" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20IN%20%28%22KaaS%202.27%20%2F%20MOSK%2024.2%22%2C%20%22KaaS%202.27.x%20%2F%20MOSK%2024.2.x%22%29" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.27.1" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.1%20%2F%20MOSK%2024.1.6%20%28Patch%20release6%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.27.2" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.2%20%2F%20MOSK%2024.1.7%20%28Patch%20release7%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.27.3" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.3%20%2F%20MOSK%2024.2.1%20%28Patch%20release1%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.27.4" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.4%20%2F%20MOSK%2024.2.2%20%28Patch%20release2%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.28" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20IN%20%28%22KaaS%202.28.x%20%2F%20MOSK%2024.3.x%22%2C%20%22KaaS%202.28%20%2F%20MOSK%2024.3%22%29" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.28.1" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.1%20%2F%20MOSK%2024.2.3%20%28Patch%20release3%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.28.2" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.2%20%2F%20MOSK%2024.2.4%20%28Patch%20release4%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.28.3" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.3%20%2F%20MOSK%2024.2.5%20%28Patch%20release5%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.28.4" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.4%20%2F%20MOSK%2024.3.1%20%28Patch%20release1%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.28.5" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.5%20%2F%20MOSK%2024.3.2%20%28Patch%20release2%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.28" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.x%20%2F%20MOSK%2024.3.x%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.29" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20IN%20%28%22KaaS%202.29%20%2F%20MOSK%2025.1%22%2C%20%22KaaS%202.29.x%20%2F%20MOSK%2025.1.x%22%29" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.29.1" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.1%20%2F%20MOSK%2024.3.3%20%28Patch%20release3%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.29.2" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.2%20%2F%20MOSK%2024.3.4%20%28Patch%20release4%29%22" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.30" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20IN%20%28%22KaaS%202.30.x%20%2F%20MOSK%2025.2.x%22%2C%20%22KaaS%202.30%20%2F%20MOSK%2025.2%22%29" >> $LOGPATH/mcc_cluster
-fi
-if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.31" ]]
-then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20IN%20%28%22KaaS%202.31%20%2F%20MOSK%2026.1%22%2C%202.31%29" >> $LOGPATH/mcc_cluster
-fi
-echo "" >> $LOGPATH/mcc_cluster
-MKEVER1=$(grep -m1 "release: mke-" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml |awk '{print substr($0,22,2)}')
-MKEVER2=$(grep -m1 "release: mke-" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml |awk '{print substr($0,25,1)}')
-MKEVER3=$(grep -m1 "release: mke-" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml |awk '{print substr($0,27,1)}')
-MKEVER4=$(grep -m1 "release: mke-" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml |awk '{print substr($0,29,1)}')
-MKEVER5=$(grep -m1 "release: mke-" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml |awk '{print substr($0,31,1)}')
-MKEVER6=$(grep -m1 "release: mke-" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml |awk '{print substr($0,33,2)}')
-printf "## MKE Version release details: $MKEVER4.$MKEVER5.$MKEVER6" >> $LOGPATH/mcc_cluster
-echo "" >> $LOGPATH/mcc_cluster
-echo "https://docs.mirantis.com/mke/$MKEVER4.$MKEVER5/release-notes/$MKEVER4-$MKEVER5-$MKEVER6.html" >> $LOGPATH/mcc_cluster
-echo "https://docs.mirantis.com/mke/$MKEVER4.$MKEVER5/release-notes/$MKEVER4-$MKEVER5-$MKEVER6/known-issues.html" >> $LOGPATH/mcc_cluster
-echo "" >> $LOGPATH/mcc_cluster
-echo "## Details and versions:" >> $LOGPATH/mcc_cluster
-printf '# ' >> $LOGPATH/mcc_cluster; ls ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml >> $LOGPATH/mcc_cluster
-grep -E "release: kaas-|release: mke-|      - message" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml >> $LOGPATH/mcc_cluster
-sed -n '/          stacklight:/,/      kind:/p' ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml >> $LOGPATH/mcc_cluster
-echo "" >> $LOGPATH/mcc_cluster
-echo "## LCM status:" >> $LOGPATH/mcc_cluster
-printf '# ' >> $LOGPATH/mcc_cluster; ls ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/lcm.mirantis.com/lcmclusters/$MCCNAME.yaml >> $LOGPATH/mcc_cluster
-sed -n '/  status:/,/    requestedNodes:/p' ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/lcm.mirantis.com/lcmclusters/$MCCNAME.yaml >> $LOGPATH/mcc_cluster
+  echo "Gathering MCC cluster details..."
+  echo "################# [MCC CLUSTER DETAILS] #################" > $LOGPATH/mcc_cluster
+  MCCVER1=$(grep -m1 "release: kaas-" "./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml" |
+ sed 's/release\: kaas\-//' | sed 's/[[:space:]]//g' |awk -F '-' '{print $1}')
+  MCCVER2=$(grep -m1 "release: kaas-" "./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml" |
+ sed 's/release\: kaas\-//' | sed 's/[[:space:]]//g' |awk -F '-' '{print $2}')
+  MCCVER3=$(grep -m1 "release: kaas-" "./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml" |
+ sed 's/release\: kaas\-//' | sed 's/[[:space:]]//g' |awk -F '-' '{print $3}')
+  echo "" >> $LOGPATH/mcc_cluster
+  printf "## MCC Version release details: $MCCVER1.$MCCVER2.$MCCVER3" >> $LOGPATH/mcc_cluster
+  echo "" >> $LOGPATH/mcc_cluster
+  echo "https://docs.mirantis.com/container-cloud/latest/release-notes/releases/$MCCVER1-$MCCVER2-$MCCVER3.html" >> $LOGPATH/mcc_cluster
+  echo "https://docs.mirantis.com/container-cloud/latest/release-notes/releases/$MCCVER1-$MCCVER2-$MCCVER3/known-$MCCVER1-$MCCVER2-$MCCVER3.html" >> $LOGPATH/mcc_cluster
+  echo "" >> $LOGPATH/mcc_cluster
+  printf "## MCC Bugs - $MCCVER1.$MCCVER2.$MCCVER3": >> $LOGPATH/mcc_cluster
+  echo "" >> $LOGPATH/mcc_cluster
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.23.2" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.2%20%2F%20MOSK%2023.1.1%20%28Patch%20release%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.23.3" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.3%20%2F%20MOSK%2023.1.2%20%28Patch%20release%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.23.4" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.4%20%2F%20MOSK%2023.1.3%20%28Patch%20release%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.23.5" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.5%20%2F%20MOSK%2023.1.4%20%28Patch%20release%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.24.3" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.3%20%2F%20MOSK%2023.2.1%20%28Patch%20release1%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.24.4" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.4%20%2F%20MOSK%2023.2.2%20%28Patch%20release2%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.24.5" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.5%20%2F%20MOSK%2023.2.3%20%28Patch%20release3%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.25" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.25%20%2F%20MOSK%2023.3%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.25.1" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.1%20%2F%20MOSK%2023.3.1%20%28Patch%20release1%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.25.2" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.2%20%2F%20MOSK%2023.3.2%20%28Patch%20release2%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.25.3" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.3%20%2F%20MOSK%2023.3.3%20%28Patch%20release3%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.25.4" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.4%20%2F%20MOSK%2023.3.4%20%28Patch%20release4%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.26" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26%20%2F%20MOSK%2024.1%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.26.1" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.1%20%2F%20MOSK%2024.1.1%20%28Patch%20release1%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.26.2" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.2%20%2F%20MOSK%2024.1.2%20%28Patch%20release2%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.26.3" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.3%20%2F%20MOSK%2024.1.3%20%28Patch%20release3%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.26.4" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.4%20%2F%20MOSK%2024.1.4%20%28Patch%20release4%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.26.5" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.5%20%2F%20MOSK%2024.1.5%20%28Patch%20release5%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.27" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.27%20%2F%20MOSK%2024.2%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.27.1" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.1%20%2F%20MOSK%2024.1.6%20%28Patch%20release6%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.27.2" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.2%20%2F%20MOSK%2024.1.7%20%28Patch%20release7%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.27.3" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.3%20%2F%20MOSK%2024.2.1%20%28Patch%20release1%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.27.4" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.4%20%2F%20MOSK%2024.2.2%20%28Patch%20release2%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.28" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.28%20%2F%20MOSK%2024.3%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.28.1" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.1%20%2F%20MOSK%2024.2.3%20%28Patch%20release3%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.28.2" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.2%20%2F%20MOSK%2024.2.4%20%28Patch%20release4%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.28.3" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.3%20%2F%20MOSK%2024.2.5%20%28Patch%20release5%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.28.4" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.4%20%2F%20MOSK%2024.3.1%20%28Patch%20release1%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.28.5" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.5%20%2F%20MOSK%2024.3.2%20%28Patch%20release2%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.29" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.29%20%2F%20MOSK%2025.1%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.29.1" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.1%20%2F%20MOSK%2024.3.3%20%28Patch%20release3%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.29.2" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.2%20%2F%20MOSK%2024.3.4%20%28Patch%20release4%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.29.3" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.3%20%2F%20MOSK%2024.3.5%20%28Patch%20release5%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.29.4" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.4%20%2F%20MOSK%2024.3.6%20%28Patch%20release6%29%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.29.5" ]]; then
+    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.5%20%2F%20MOSK%2024.3.7%20%28Patch%20release7%29%22" >>$LOGPATH/mcc_cluster
+  fi  
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.30" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30%20%2F%20MOSK%2025.2%22" >> $LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.30.1" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.1%20%2F%20MOSK%2025.2.1%20(Patch%20release1)%22" >> $LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.30.2" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.2%20%2F%20MOSK%2025.2.2%20(Patch%20release2)%22" >> $LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.30.3" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.3%20%2F%20MOSK%2025.2.3%20(Patch%20release3)%22" >> $LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.30.4" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.4%20%2F%20MOSK%2025.2.4%20(Patch%20release4)%22" >> $LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.30.5" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.5%20%2F%20MOSK%2025.2.5%20(Patch%20release5)%22" >> $LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.31" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31%20%2F%20MOSK%2026.1%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.31.1" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.1%20%2F%20MOSK%2025.2.6%20(Patch%20release6)%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.31.2" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.2%20%2F%20MOSK%2025.2.7%20(Patch%20release7)%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.31.3" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.3%20%2F%20MOSK%2025.2.8%20(Patch%20release8)%22" >>$LOGPATH/mcc_cluster
+  fi
+  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.31.4" ]]; then
+    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.4%20%2F%20MOSK%2025.2.9%20(Patch%20release9)%22" >>$LOGPATH/mcc_cluster
+  fi
+  echo "" >> $LOGPATH/mcc_cluster
+  MKEVER1=$(grep -m1 "release: mke-" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml |
+ sed 's/release\: mke\-//' | sed 's/[[:space:]]//g' |awk -F '-' '{print $1}')
+  MKEVER2=$(grep -m1 "release: mke-" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml |
+ sed 's/release\: mke\-//' | sed 's/[[:space:]]//g' |awk -F '-' '{print $2}')
+  MKEVER3=$(grep -m1 "release: mke-" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml |
+ sed 's/release\: mke\-//' | sed 's/[[:space:]]//g' |awk -F '-' '{print $3}')
+  MKEVER4=$(grep -m1 "release: mke-" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml |
+ sed 's/release\: mke\-//' | sed 's/[[:space:]]//g' |awk -F '-' '{print $4}')
+  MKEVER5=$(grep -m1 "release: mke-" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml |
+ sed 's/release\: mke\-//' | sed 's/[[:space:]]//g' |awk -F '-' '{print $5}')
+  MKEVER6=$(grep -m1 "release: mke-" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml |
+ sed 's/release\: mke\-//' | sed 's/[[:space:]]//g' |awk -F '-' '{print $6}')
+  printf "## MKE Version release details: $MKEVER4.$MKEVER5.$MKEVER6" >> $LOGPATH/mcc_cluster
+  echo "" >> $LOGPATH/mcc_cluster
+  echo "https://docs.mirantis.com/mke/$MKEVER4.$MKEVER5/release-notes/$MKEVER4-$MKEVER5-$MKEVER6.html" >> $LOGPATH/mcc_cluster
+  echo "https://docs.mirantis.com/mke/$MKEVER4.$MKEVER5/release-notes/$MKEVER4-$MKEVER5-$MKEVER6/known-issues.html" >> $LOGPATH/mcc_cluster
+  echo "" >> $LOGPATH/mcc_cluster
+  echo "## Details and versions:" >> $LOGPATH/mcc_cluster
+  printf '# ' >> $LOGPATH/mcc_cluster; ls ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml >> $LOGPATH/mcc_cluster
+  grep -E "release: kaas-|release: mke-|      - message" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml >> $LOGPATH/mcc_cluster
+  sed -n '/          stacklight:/,/      kind:/p' ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml >> $LOGPATH/mcc_cluster
+  echo "" >> $LOGPATH/mcc_cluster
+  echo "## LCM status:" >> $LOGPATH/mcc_cluster
+  printf '# ' >> $LOGPATH/mcc_cluster; ls ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/lcm.mirantis.com/lcmclusters/$MCCNAME.yaml >> $LOGPATH/mcc_cluster
+  sed -n '/  status:/,/    requestedNodes:/p' ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/lcm.mirantis.com/lcmclusters/$MCCNAME.yaml >> $LOGPATH/mcc_cluster
 fi
 
 if [[ -n "$MCCNAME" ]] ; then
