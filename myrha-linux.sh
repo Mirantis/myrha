@@ -9,14 +9,14 @@ mkdir $LOGPATH 2>/dev/null
 rm -f "$LOGPATH"/* 2>/dev/null
 
 for cmd in rg nvim subl yq bc; do
-    if ! command -v "$cmd" &>/dev/null; then
-        echo "Installing $cmd..."
-        sudo apt-get install "$cmd" -y 2>/dev/null || sudo dnf install "$cmd" -y 2>/dev/null
-    fi
+  if ! command -v "$cmd" &>/dev/null; then
+    echo "Installing $cmd..."
+    sudo apt-get install "$cmd" -y 2>/dev/null || sudo dnf install "$cmd" -y 2>/dev/null
+  fi
 done
 
 # --- HTML Initialization ---
-cat <<EOF > "$HTML_REPORT"
+cat <<EOF >"$HTML_REPORT"
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -67,8 +67,8 @@ cat <<EOF > "$HTML_REPORT"
     }
     body.sidebar-hidden .toggle-sidebar-btn { left: 15px; transform: rotate(180deg); }
 
-    /* Card Styling */
-    .card { background: white; border-radius: 12px; padding: 25px; margin-bottom: 35px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+    /* Card Styling - Optimized for Lazy Loading */
+    .card { background: white; border-radius: 12px; padding: 25px; margin-bottom: 35px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); min-height: 200px; }
     h2 { color: var(--primary); margin: 0 0 15px 0; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 10px; }
 
     /* Action Buttons in Card Header */
@@ -78,8 +78,9 @@ cat <<EOF > "$HTML_REPORT"
         font-size: 0.7rem; background: #eee; color: #666; 
         padding: 4px 10px; border-radius: 4px; border: 1px solid #ddd;
         cursor: pointer; transition: 0.2s; font-weight: bold; user-select: none;
+        text-decoration: none; display: inline-block;
     }
-    .btn-tool:hover { background: #e0e0e0; border-color: #ccc; }
+    .btn-tool:hover { background: #e0e0e0; border-color: #ccc; color: #333; }
     .btn-tool.active { background: var(--accent); color: white; border-color: var(--accent); }
     .btn-copy.success { background: #27ae60 !important; color: white !important; border-color: #2ecc71 !important; }
 
@@ -88,7 +89,8 @@ cat <<EOF > "$HTML_REPORT"
         padding: 5px 10px; border-radius: 4px; text-decoration: none !important; font-weight: bold;
     }
 
-    /* Force Wrapping Override Logic */
+    /* Code Block Styling */
+    pre[class*="language-"] { max-height: 500px; border-radius: 8px; }
     pre[class*="language-"].raw-code { white-space: pre !important; word-break: normal !important; overflow-x: auto !important; }
     pre[class*="language-"].wrapped-code { white-space: pre-wrap !important; word-break: break-all !important; overflow-x: hidden !important; }
     pre[class*="language-"] code { white-space: inherit !important; word-break: inherit !important; }
@@ -101,21 +103,30 @@ cat <<EOF > "$HTML_REPORT"
         document.body.classList.toggle('sidebar-hidden');
     }
 
+    // Initialize Prism Highlighting only when card is visible
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const codeBlock = entry.target.querySelector('pre code');
+                if (codeBlock && !entry.target.dataset.highlighted) {
+                    Prism.highlightElement(codeBlock);
+                    entry.target.dataset.highlighted = "true";
+                }
+            }
+        });
+    }, { threshold: 0.1 });
+
+    window.onload = () => {
+        document.querySelectorAll('.card').forEach(card => observer.observe(card));
+    };
+
     function toggleBlockWrap(btn, anchor) {
         const card = document.getElementById(anchor);
         const codeBlock = card.querySelector('pre');
-        
-        if (codeBlock.classList.contains('wrapped-code')) {
-            codeBlock.classList.remove('wrapped-code');
-            codeBlock.classList.add('raw-code');
-            btn.classList.remove('active');
-            btn.innerText = 'Wrap: OFF';
-        } else {
-            codeBlock.classList.remove('raw-code');
-            codeBlock.classList.add('wrapped-code');
-            btn.classList.add('active');
-            btn.innerText = 'Wrap: ON';
-        }
+        codeBlock.classList.toggle('wrapped-code');
+        codeBlock.classList.toggle('raw-code');
+        btn.classList.toggle('active');
+        btn.innerText = codeBlock.classList.contains('wrapped-code') ? 'Wrap: ON' : 'Wrap: OFF';
     }
 
     async function copyToClipboard(btn, anchor) {
@@ -130,9 +141,7 @@ cat <<EOF > "$HTML_REPORT"
                 btn.innerText = originalText;
                 btn.classList.remove('success');
             }, 2000);
-        } catch (err) {
-            console.error('Failed to copy: ', err);
-        }
+        } catch (err) { console.error(err); }
     }
 </script>
 </head>
@@ -157,99 +166,101 @@ EOF
 
 # --- Cert audit function ---
 audit_k8s_secret() {
-    local YAML_FILE="$1"
-    
-    if [[ -z "$YAML_FILE" || ! -f "$YAML_FILE" ]]; then
-        echo "❌ Error: File '$YAML_FILE' not found."
-        return 1
-    fi
+  local YAML_FILE="$1"
 
-    local TMP_DIR=$(mktemp -d)
-    local IS_WRAPPED=$(yq eval 'has("Object")' "$YAML_FILE" 2>/dev/null)
-    local DATA_PATH=".data"
-    [[ "$IS_WRAPPED" == "true" ]] && DATA_PATH=".Object.data"
+  if [[ -z "$YAML_FILE" || ! -f "$YAML_FILE" ]]; then
+    echo "❌ Error: File '$YAML_FILE' not found."
+    return 1
+  fi
 
-    local KEYS=$(yq eval "$DATA_PATH | keys | .[]" "$YAML_FILE" 2>/dev/null)
-    [[ -z "$KEYS" ]] && { rm -rf "$TMP_DIR"; return 1; }
+  local TMP_DIR=$(mktemp -d)
+  local IS_WRAPPED=$(yq eval 'has("Object")' "$YAML_FILE" 2>/dev/null)
+  local DATA_PATH=".data"
+  [[ "$IS_WRAPPED" == "true" ]] && DATA_PATH=".Object.data"
 
-    echo "===================================================="
-    echo "🔍 AUDIT REPORT: $(basename "$YAML_FILE")"
-    echo "===================================================="
-
-    local LEAF_CERT=""
-    local CA_CERT=""
-    local PRIVATE_KEY=""
-
-    for KEY in $KEYS; do
-        local VAL=$(yq eval "$DATA_PATH.\"$KEY\"" "$YAML_FILE" | tr -d '[:space:]')
-        local TARGET_FILE="$TMP_DIR/$KEY"
-        echo "$VAL" | base64 -d > "$TARGET_FILE" 2>/dev/null
-        
-        local CONTENT_TYPE=$(grep -m 1 "BEGIN" "$TARGET_FILE")
-        echo "--- Field: [$KEY] ---" 
-        
-        if [[ "$CONTENT_TYPE" == *"PRIVATE KEY"* ]]; then
-            PRIVATE_KEY="$TARGET_FILE"
-            cat "$TARGET_FILE"
-            echo -e "\n----------------------------------------------------"
-            local K_MD5=$(openssl rsa -noout -modulus -in "$TARGET_FILE" 2>/dev/null | openssl md5 | awk '{print $NF}')
-            echo "🔑 Key Modulus MD5: $K_MD5"
-
-        elif [[ "$CONTENT_TYPE" == *"CERTIFICATE"* ]]; then
-            cat "$TARGET_FILE"
-            echo -e "\n----------------------------------------------------"
-            
-            local CN=$(openssl x509 -noout -subject -in "$TARGET_FILE" -nameopt RFC2253 | sed 's/.*CN=//;s/,.*//')
-            local EXPIRY=$(openssl x509 -noout -enddate -in "$TARGET_FILE" | cut -d= -f2)
-            local ISSUER=$(openssl x509 -noout -issuer -in "$TARGET_FILE" -nameopt RFC2253)
-            local SUBJECT=$(openssl x509 -noout -subject -in "$TARGET_FILE" -nameopt RFC2253)
-            local C_MD5=$(openssl x509 -noout -modulus -in "$TARGET_FILE" | openssl md5 | awk '{print $NF}')
-            local SAN=$(openssl x509 -noout -ext subjectAltName -in "$TARGET_FILE" 2>/dev/null | tail -n +2 | sed 's/^[[:space:]]*//')
-
-            echo "📋 CN:      $CN"
-            echo "🌐 SAN:     ${SAN:-None}"
-            echo "📅 Expires: $EXPIRY"
-            echo "🔢 Cert Modulus MD5: $C_MD5"
-
-            if [[ "$KEY" == *"ca"* || "$ISSUER" == "$SUBJECT" ]]; then
-                CA_CERT="$TARGET_FILE"
-                echo "🏢 Role:    CA/Root Certificate"
-            else
-                LEAF_CERT="$TARGET_FILE"
-                echo "🌿 Role:    Leaf/Server Certificate"
-            fi
-        fi
-        echo ""
-    done
-
-    echo "===================================================="
-    echo "⚖️  FINAL VALIDATIONS"
-    echo "===================================================="
-
-    # 1. Private Key vs Leaf Certificate Match
-    printf "Match (Key <-> Leaf): "
-    if [[ -n "$LEAF_CERT" && -n "$PRIVATE_KEY" ]]; then
-        local FINAL_C_MD5=$(openssl x509 -noout -modulus -in "$LEAF_CERT" | openssl md5 | awk '{print $NF}')
-        local FINAL_K_MD5=$(openssl rsa -noout -modulus -in "$PRIVATE_KEY" 2>/dev/null | openssl md5 | awk '{print $NF}')
-        [[ "$FINAL_C_MD5" == "$FINAL_K_MD5" ]] && echo "✅ VALID" || echo "❌ MISMATCH"
-    else
-        echo "ℹ️  SKIPPED (Missing either Private Key or Leaf Cert)"
-    fi
-
-    # 2. Trust Chain Validation
-    printf "Chain (Leaf <-> CA):  "
-    if [[ -n "$LEAF_CERT" && -n "$CA_CERT" ]]; then
-        local VERIFY_OUT=$(openssl verify -CAfile "$CA_CERT" "$LEAF_CERT" 2>&1)
-        [[ "$VERIFY_OUT" == *"OK"* ]] && echo "✅ VERIFIED" || echo "❌ FAILED ($VERIFY_OUT)"
-    else
-        echo "ℹ️  SKIPPED (Missing either CA Cert or Leaf Cert)"
-    fi
-
+  local KEYS=$(yq eval "$DATA_PATH | keys | .[]" "$YAML_FILE" 2>/dev/null)
+  [[ -z "$KEYS" ]] && {
     rm -rf "$TMP_DIR"
-    echo "===================================================="
-    echo ""
-}
+    return 1
+  }
 
+  echo "===================================================="
+  echo "🔍 AUDIT REPORT: $(basename "$YAML_FILE")"
+  echo "===================================================="
+
+  local LEAF_CERT=""
+  local CA_CERT=""
+  local PRIVATE_KEY=""
+
+  for KEY in $KEYS; do
+    local VAL=$(yq eval "$DATA_PATH.\"$KEY\"" "$YAML_FILE" | tr -d '[:space:]')
+    local TARGET_FILE="$TMP_DIR/$KEY"
+    echo "$VAL" | base64 -d >"$TARGET_FILE" 2>/dev/null
+
+    local CONTENT_TYPE=$(grep -m 1 "BEGIN" "$TARGET_FILE")
+    echo "--- Field: [$KEY] ---"
+
+    if [[ "$CONTENT_TYPE" == *"PRIVATE KEY"* ]]; then
+      PRIVATE_KEY="$TARGET_FILE"
+      cat "$TARGET_FILE"
+      echo -e "\n----------------------------------------------------"
+      local K_MD5=$(openssl rsa -noout -modulus -in "$TARGET_FILE" 2>/dev/null | openssl md5 | awk '{print $NF}')
+      echo "🔑 Key Modulus MD5: $K_MD5"
+
+    elif [[ "$CONTENT_TYPE" == *"CERTIFICATE"* ]]; then
+      cat "$TARGET_FILE"
+      echo -e "\n----------------------------------------------------"
+
+      local CN=$(openssl x509 -noout -subject -in "$TARGET_FILE" -nameopt RFC2253 | sed 's/.*CN=//;s/,.*//')
+      local EXPIRY=$(openssl x509 -noout -enddate -in "$TARGET_FILE" | cut -d= -f2)
+      local ISSUER=$(openssl x509 -noout -issuer -in "$TARGET_FILE" -nameopt RFC2253)
+      local SUBJECT=$(openssl x509 -noout -subject -in "$TARGET_FILE" -nameopt RFC2253)
+      local C_MD5=$(openssl x509 -noout -modulus -in "$TARGET_FILE" | openssl md5 | awk '{print $NF}')
+      local SAN=$(openssl x509 -noout -ext subjectAltName -in "$TARGET_FILE" 2>/dev/null | tail -n +2 | sed 's/^[[:space:]]*//')
+
+      echo "📋 CN:      $CN"
+      echo "🌐 SAN:     ${SAN:-None}"
+      echo "📅 Expires: $EXPIRY"
+      echo "🔢 Cert Modulus MD5: $C_MD5"
+
+      if [[ "$KEY" == *"ca"* || "$ISSUER" == "$SUBJECT" ]]; then
+        CA_CERT="$TARGET_FILE"
+        echo "🏢 Role:    CA/Root Certificate"
+      else
+        LEAF_CERT="$TARGET_FILE"
+        echo "🌿 Role:    Leaf/Server Certificate"
+      fi
+    fi
+    echo ""
+  done
+
+  echo "===================================================="
+  echo "⚖️  FINAL VALIDATIONS"
+  echo "===================================================="
+
+  # 1. Private Key vs Leaf Certificate Match
+  printf "Match (Key <-> Leaf): "
+  if [[ -n "$LEAF_CERT" && -n "$PRIVATE_KEY" ]]; then
+    local FINAL_C_MD5=$(openssl x509 -noout -modulus -in "$LEAF_CERT" | openssl md5 | awk '{print $NF}')
+    local FINAL_K_MD5=$(openssl rsa -noout -modulus -in "$PRIVATE_KEY" 2>/dev/null | openssl md5 | awk '{print $NF}')
+    [[ "$FINAL_C_MD5" == "$FINAL_K_MD5" ]] && echo "✅ VALID" || echo "❌ MISMATCH"
+  else
+    echo "ℹ️  SKIPPED (Missing either Private Key or Leaf Cert)"
+  fi
+
+  # 2. Trust Chain Validation
+  printf "Chain (Leaf <-> CA):  "
+  if [[ -n "$LEAF_CERT" && -n "$CA_CERT" ]]; then
+    local VERIFY_OUT=$(openssl verify -CAfile "$CA_CERT" "$LEAF_CERT" 2>&1)
+    [[ "$VERIFY_OUT" == *"OK"* ]] && echo "✅ VERIFIED" || echo "❌ FAILED ($VERIFY_OUT)"
+  else
+    echo "ℹ️  SKIPPED (Missing either CA Cert or Leaf Cert)"
+  fi
+
+  rm -rf "$TMP_DIR"
+  echo "===================================================="
+  echo ""
+}
 
 echo "Generating report. This operation may take several minutes... Please wait."
 
@@ -273,103 +284,103 @@ fi
 if [[ -n "$MOSNAME" ]]; then
   OUT="$LOGPATH/mos_cluster"
   echo "Gathering MOS cluster details..."
-  echo "################# [MOS CLUSTER DETAILS] #################" > "$OUT"
-  
+  echo "################# [MOS CLUSTER DETAILS] #################" >"$OUT"
+
   MOS_STATUS_FILE=$(ls ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml 2>/dev/null | head -n 1)
-  
+
   if [[ -n "$MOS_STATUS_FILE" ]]; then
     # Unified split for MOS (e.g., 21.0.0+25.2.9)
     REL_RAW=$(grep -m1 "    release: " "$MOS_STATUS_FILE" | sed -e 's/.*release: //' -e 's/[[:space:]]//g' -e 's/+/./g')
-    IFS='.' read -r -a V <<< "$REL_RAW"
+    IFS='.' read -r -a V <<<"$REL_RAW"
     # V[0]=VER1, V[1]=VER2, V[2]=VER3, V[3]=VER4, V[4]=VER5, V[5]=VER6
-    
-    printf "## MOS release details (Managed): ${V[0]}.${V[1]}.${V[2]}+${V[3]}.${V[4]}.${V[5]}" >> "$OUT"
-    echo "" >> "$OUT"
 
-    if (( $(echo "${V[3]}.${V[4]} >= 25.2" | bc -l) )); then
-      echo "https://docs.mirantis.com/mosk/25.2/release-notes/25.2-series/25.2.${V[5]}.html" | sed 's/\.\././' >> "$OUT"
+    printf "## MOS release details (Managed): ${V[0]}.${V[1]}.${V[2]}+${V[3]}.${V[4]}.${V[5]}" >>"$OUT"
+    echo "" >>"$OUT"
+
+    if (($(echo "${V[3]}.${V[4]} >= 25.2" | bc -l))); then
+      echo "https://docs.mirantis.com/mosk/25.2/release-notes/25.2-series/25.2.${V[5]}.html" | sed 's/\.\././' >>"$OUT"
     else
-      echo "https://docs.mirantis.com/mosk/25.1-and-earlier/release-notes/release-notes-mosk-old/${V[3]}.${V[4]}-series/${V[3]}.${V[4]}.${V[5]}.html" | sed 's/\.\././' >> "$OUT"
+      echo "https://docs.mirantis.com/mosk/25.1-and-earlier/release-notes/release-notes-mosk-old/${V[3]}.${V[4]}-series/${V[3]}.${V[4]}.${V[5]}.html" | sed 's/\.\././' >>"$OUT"
     fi
-    echo "" >> "$OUT"
-    
+    echo "" >>"$OUT"
+
     MOS_BUG_VER="${V[3]}.${V[4]}.${V[5]}"
-    printf "## MOS Bugs - $MOS_BUG_VER:" >> "$OUT"
-    echo "" >> "$OUT"
+    printf "## MOS Bugs - $MOS_BUG_VER:" >>"$OUT"
+    echo "" >>"$OUT"
 
     # Full Jira Restoration (MOS)
-    [[ "$MOS_BUG_VER" == "23.1.1" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.2%20%2F%20MOSK%2023.1.1%20%28Patch%20release%29%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "23.1.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.3%20%2F%20MOSK%2023.1.2%20%28Patch%20release%29%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "23.1.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.4%20%2F%20MOSK%2023.1.3%20%28Patch%20release%29%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "23.1.4" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.5%20%2F%20MOSK%2023.1.4%20%28Patch%20release%29%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "23.2.1" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.3%20%2F%20MOSK%2023.2.1%20%28Patch%20release1%29%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "23.2.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.4%20%2F%20MOSK%2023.2.2%20%28Patch%20release2%29%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "23.2.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.5%20%2F%20MOSK%2023.2.3%20%28Patch%20release3%29%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "23.3."* ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20IN%20%28%22KaaS%202.25%20%2F%20MOSK%2023.3%22%2C%20%22KaaS%202.25.x%20%2F%20MOSK%2023.3.x%22%29" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "23.3.1" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.1%20%2F%20MOSK%2023.3.1%20%28Patch%20release1%29%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "23.3.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.2%20%2F%20MOSK%2023.3.2%20%28Patch%20release2%29%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "23.3.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.3%20%2F%20MOSK%2023.3.3%20%28Patch%20release3%29%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "23.3.4" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.4%20%2F%20MOSK%2023.3.4%20%28Patch%20release4%29%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "24.1."* ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26%20%2F%20MOSK%2024.1%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "24.1.1" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.1%20%2F%20MOSK%2024.1.1%20%28Patch%20release1%29%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "24.1.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.2%20%2F%20MOSK%2024.1.2%20%28Patch%20release2%29%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "24.1.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.3%20%2F%20MOSK%2024.1.3%20%28Patch%20release3%29%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "24.1.4" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.4%20%2F%20MOSK%2024.1.4%20%28Patch%20release4%29%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "24.1.5" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.5%20%2F%20MOSK%2024.1.5%20%28Patch%20release5%29%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "24.1.6" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.1%20%2F%20MOSK%2024.1.6%20%28Patch%20release6%29%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "24.1.7" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.2%20%2F%20MOSK%2024.1.7%20%28Patch%20release7%29%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "24.2."* ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.27%20%2F%20MOSK%2024.2%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "24.2.1" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.3%20%2F%20MOSK%2024.2.1%20%28Patch%20release1%29%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "24.2.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.4%20%2F%20MOSK%2024.2.2%20%28Patch%20release2%29%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "24.2.3" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.28.1%20%2F%20MOSK%2024.2.3%20(Patch%20release3)%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "24.2.4" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.28.2%20%2F%20MOSK%2024.2.4%20(Patch%20release4)%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "24.2.5" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.28.3%20%2F%20MOSK%2024.2.5%20(Patch%20release5)%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "24.3" ]]   && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.28%20%2F%20MOSK%2024.3%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "24.3.1" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.4%20%2F%20MOSK%2024.3.1%20%28Patch%20release1%29%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "24.3.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.5%20%2F%20MOSK%2024.3.2%20%28Patch%20release2%29%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "24.3.3" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.29.1%20%2F%20MOSK%2024.3.3%20(Patch%20release3)%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "24.3.4" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.2%20%2F%20MOSK%2024.3.4%20%28Patch%20release4%29%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "24.3.5" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.29.3%20%2F%20MOSK%2024.3.5%20(Patch%20release5)%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "24.3.6" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.29.4%20%2F%20MOSK%2024.3.6%20(Patch%20release6)%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "25.1."* ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.5%20%2F%20MOSK%2025.2.5%20(Patch%20release5)%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "25.1.1" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.5%20%2F%20MOSK%2025.2.5%20(Patch%20release5)%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "25.2."* ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30%20%2F%20MOSK%2025.2%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "25.2.1" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.1%20%2F%20MOSK%2025.2.1%20(Patch%20release1)%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "25.2.2" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.2%20%2F%20MOSK%2025.2.2%20(Patch%20release2)%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "25.2.3" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.3%20%2F%20MOSK%2025.2.3%20(Patch%20release3)%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "25.2.4" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.4%20%2F%20MOSK%2025.2.4%20(Patch%20release4)%22" >> "$OUT"
-    [[ "$MOS_BUG_VER" == "25.2.5" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.5%20%2F%20MOSK%2025.2.5%20(Patch%20release5)%22" >> "$OUT"
+    [[ "$MOS_BUG_VER" == "23.1.1" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.2%20%2F%20MOSK%2023.1.1%20%28Patch%20release%29%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "23.1.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.3%20%2F%20MOSK%2023.1.2%20%28Patch%20release%29%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "23.1.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.4%20%2F%20MOSK%2023.1.3%20%28Patch%20release%29%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "23.1.4" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.5%20%2F%20MOSK%2023.1.4%20%28Patch%20release%29%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "23.2.1" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.3%20%2F%20MOSK%2023.2.1%20%28Patch%20release1%29%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "23.2.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.4%20%2F%20MOSK%2023.2.2%20%28Patch%20release2%29%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "23.2.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.5%20%2F%20MOSK%2023.2.3%20%28Patch%20release3%29%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "23.3."* ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20IN%20%28%22KaaS%202.25%20%2F%20MOSK%2023.3%22%2C%20%22KaaS%202.25.x%20%2F%20MOSK%2023.3.x%22%29" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "23.3.1" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.1%20%2F%20MOSK%2023.3.1%20%28Patch%20release1%29%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "23.3.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.2%20%2F%20MOSK%2023.3.2%20%28Patch%20release2%29%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "23.3.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.3%20%2F%20MOSK%2023.3.3%20%28Patch%20release3%29%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "23.3.4" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.4%20%2F%20MOSK%2023.3.4%20%28Patch%20release4%29%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "24.1."* ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26%20%2F%20MOSK%2024.1%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "24.1.1" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.1%20%2F%20MOSK%2024.1.1%20%28Patch%20release1%29%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "24.1.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.2%20%2F%20MOSK%2024.1.2%20%28Patch%20release2%29%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "24.1.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.3%20%2F%20MOSK%2024.1.3%20%28Patch%20release3%29%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "24.1.4" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.4%20%2F%20MOSK%2024.1.4%20%28Patch%20release4%29%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "24.1.5" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.5%20%2F%20MOSK%2024.1.5%20%28Patch%20release5%29%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "24.1.6" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.1%20%2F%20MOSK%2024.1.6%20%28Patch%20release6%29%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "24.1.7" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.2%20%2F%20MOSK%2024.1.7%20%28Patch%20release7%29%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "24.2."* ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.27%20%2F%20MOSK%2024.2%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "24.2.1" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.3%20%2F%20MOSK%2024.2.1%20%28Patch%20release1%29%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "24.2.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.4%20%2F%20MOSK%2024.2.2%20%28Patch%20release2%29%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "24.2.3" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.28.1%20%2F%20MOSK%2024.2.3%20(Patch%20release3)%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "24.2.4" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.28.2%20%2F%20MOSK%2024.2.4%20(Patch%20release4)%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "24.2.5" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.28.3%20%2F%20MOSK%2024.2.5%20(Patch%20release5)%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "24.3."* ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.28%20%2F%20MOSK%2024.3%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "24.3.1" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.4%20%2F%20MOSK%2024.3.1%20%28Patch%20release1%29%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "24.3.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.5%20%2F%20MOSK%2024.3.2%20%28Patch%20release2%29%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "24.3.3" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.29.1%20%2F%20MOSK%2024.3.3%20(Patch%20release3)%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "24.3.4" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.2%20%2F%20MOSK%2024.3.4%20%28Patch%20release4%29%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "24.3.5" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.29.3%20%2F%20MOSK%2024.3.5%20(Patch%20release5)%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "24.3.6" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.29.4%20%2F%20MOSK%2024.3.6%20(Patch%20release6)%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "25.1."* ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.5%20%2F%20MOSK%2025.2.5%20(Patch%20release5)%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "25.1.1" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.5%20%2F%20MOSK%2025.2.5%20(Patch%20release5)%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "25.2."* ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30%20%2F%20MOSK%2025.2%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "25.2.1" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.1%20%2F%20MOSK%2025.2.1%20(Patch%20release1)%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "25.2.2" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.2%20%2F%20MOSK%2025.2.2%20(Patch%20release2)%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "25.2.3" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.3%20%2F%20MOSK%2025.2.3%20(Patch%20release3)%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "25.2.4" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.4%20%2F%20MOSK%2025.2.4%20(Patch%20release4)%22" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "25.2.5" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.5%20%2F%20MOSK%2025.2.5%20(Patch%20release5)%22" >>"$OUT"
 
-    echo "" >> "$OUT"
-    echo "## Details and versions:" >> "$OUT"
-    printf '# ' >> "$OUT"
-    ls $MOS_STATUS_FILE >> "$OUT"
-    grep -m1 "      release:" $MOS_STATUS_FILE >> "$OUT"
-    grep -m1 "      openstack_version:" $MOS_STATUS_FILE >> "$OUT"
-    sed -n '/    services:/,$p' $MOS_STATUS_FILE >> "$OUT"
-    
+    echo "" >>"$OUT"
+    echo "## Details and versions:" >>"$OUT"
+    printf '# ' >>"$OUT"
+    ls $MOS_STATUS_FILE >>"$OUT"
+    grep -m1 "      release:" $MOS_STATUS_FILE >>"$OUT"
+    grep -m1 "      openstack_version:" $MOS_STATUS_FILE >>"$OUT"
+    sed -n '/    services:/,$p' $MOS_STATUS_FILE >>"$OUT"
+
     if [[ -n "$MCCNAME" ]]; then
-      echo "## LCM status:" >> "$OUT"
-      printf '# ' >> "$OUT"
+      echo "## LCM status:" >>"$OUT"
+      printf '# ' >>"$OUT"
       LCM_YAML="./$MCCNAME/objects/namespaced/$MOSNAMESPACE/lcm.mirantis.com/lcmclusters/$MOSNAME.yaml"
-      [[ -f "$LCM_YAML" ]] && ls $LCM_YAML >> "$OUT"
-      [[ -f "$LCM_YAML" ]] && sed -n '/  status:/,/    requestedNodes:/p' $LCM_YAML >> "$OUT"
-    
-    echo "" >> "$OUT"
-    echo "Gathering Node Conditions..."
-    echo "################# [NODE CONDITIONS] #################" >> "$OUT"
-    for nf in $(grep "/core/nodes" "$LOGPATH/files" | grep "$MOSNAME"); do
+      [[ -f "$LCM_YAML" ]] && ls $LCM_YAML >>"$OUT"
+      [[ -f "$LCM_YAML" ]] && sed -n '/  status:/,/    requestedNodes:/p' $LCM_YAML >>"$OUT"
+
+      echo "" >>"$OUT"
+      echo "Gathering Node Conditions..."
+      echo "################# [NODE CONDITIONS] #################" >>"$OUT"
+      for nf in $(grep "/core/nodes" "$LOGPATH/files" | grep "$MOSNAME"); do
         N_NAME=$(basename "$nf" .yaml)
         # We use sed to grab the block for the specific type, then find the status within it
         READY=$(grep -B 5 'type: Ready' "$nf" | grep "status:" | head -n 1 | awk '{print $NF}' | tr -d '", ')
         DISK=$(grep -B 5 'type: DiskPressure' "$nf" | grep "status" | head -n 1 | awk '{print $NF}' | tr -d '", ')
-        
+
         # Default to Unknown if extraction failed
         [[ -z "$READY" ]] && READY="Unknown"
         [[ -z "$DISK" ]] && DISK="Unknown"
 
-        printf "Node: %-50s | Ready: %-8s | DiskPressure: %-8s\n" "$N_NAME" "$READY" "$DISK" >> "$OUT"
-    done
+        printf "Node: %-50s | Ready: %-8s | DiskPressure: %-8s\n" "$N_NAME" "$READY" "$DISK" >>"$OUT"
+      done
     fi
     #add_to_html "Node Health Status" "$(cat "$OUT")"
   fi
@@ -838,112 +849,112 @@ fi
 if [[ -n "$MCCNAME" ]]; then
   OUT="$LOGPATH/mcc_cluster"
   echo "Gathering MCC cluster details..."
-  echo "################# [MCC CLUSTER DETAILS] #################" > "$OUT"
+  echo "################# [MCC CLUSTER DETAILS] #################" >"$OUT"
   MCC_YAML="./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml"
-  
-if [[ -f "$MCC_YAML" ]]; then
+
+  if [[ -f "$MCC_YAML" ]]; then
     K_RAW=$(grep -m1 "release: kaas-" "$MCC_YAML" | sed -e 's/.*kaas-//' -e 's/[[:space:]]//g' -e 's/-/./g')
-    IFS='.' read -r -a M <<< "$K_RAW"
-    
-    printf "## MCC Version release details: ${M[0]}.${M[1]}.${M[2]}" >> "$OUT"
-    echo "" >> "$OUT"
-    echo "https://docs.mirantis.com/container-cloud/latest/release-notes/releases/${M[0]}-${M[1]}-${M[2]}.html" >> "$OUT"
-    echo "https://docs.mirantis.com/container-cloud/latest/release-notes/releases/${M[0]}-${M[1]}-${M[2]}/known-${M[0]}-${M[1]}-${M[2]}.html" >> "$OUT"
-    
+    IFS='.' read -r -a M <<<"$K_RAW"
+
+    printf "## MCC Version release details: ${M[0]}.${M[1]}.${M[2]}" >>"$OUT"
+    echo "" >>"$OUT"
+    echo "https://docs.mirantis.com/container-cloud/latest/release-notes/releases/${M[0]}-${M[1]}-${M[2]}.html" >>"$OUT"
+    echo "https://docs.mirantis.com/container-cloud/latest/release-notes/releases/${M[0]}-${M[1]}-${M[2]}/known-${M[0]}-${M[1]}-${M[2]}.html" >>"$OUT"
+
     MCC_BUG_VER="${M[0]}.${M[1]}.${M[2]}"
-    echo "" >> "$OUT"
-    printf "## MCC Bugs - $MCC_BUG_VER:" >> "$OUT"
-    echo "" >> "$OUT"
+    echo "" >>"$OUT"
+    printf "## MCC Bugs - $MCC_BUG_VER:" >>"$OUT"
+    echo "" >>"$OUT"
 
     # Jira (MCC)
-    [[ "$MCC_BUG_VER" == "2.23.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.2%20%2F%20MOSK%2023.1.1%20%28Patch%20release%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.23.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.3%20%2F%20MOSK%2023.1.2%20%28Patch%20release%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.23.4" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.4%20%2F%20MOSK%2023.1.3%20%28Patch%20release%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.23.5" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.5%20%2F%20MOSK%2023.1.4%20%28Patch%20release%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.24.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.3%20%2F%20MOSK%2023.2.1%20%28Patch%20release1%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.24.4" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.4%20%2F%20MOSK%2023.2.2%20%28Patch%20release2%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.24.5" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.5%20%2F%20MOSK%2023.2.3%20%28Patch%20release3%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.25" ]]   && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.25%20%2F%20MOSK%2023.3%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.25.1" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.1%20%2F%20MOSK%2023.3.1%20%28Patch%20release1%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.25.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.2%20%2F%20MOSK%2023.3.2%20%28Patch%20release2%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.25.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.3%20%2F%20MOSK%2023.3.3%20%28Patch%20release3%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.25.4" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.4%20%2F%20MOSK%2023.3.4%20%28Patch%20release4%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.26" ]]   && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26%20%2F%20MOSK%2024.1%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.26.1" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.1%20%2F%20MOSK%2024.1.1%20%28Patch%20release1%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.26.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.2%20%2F%20MOSK%2024.1.2%20%28Patch%20release2%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.26.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.3%20%2F%20MOSK%2024.1.3%20%28Patch%20release3%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.26.4" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.4%20%2F%20MOSK%2024.1.4%20%28Patch%20release4%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.26.5" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.5%20%2F%20MOSK%2024.1.5%20%28Patch%20release5%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.27" ]]   && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.27%20%2F%20MOSK%2024.2%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.27.1" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.1%20%2F%20MOSK%2024.1.6%20%28Patch%20release6%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.27.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.2%20%2F%20MOSK%2024.1.7%20%28Patch%20release7%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.27.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.3%20%2F%20MOSK%2024.2.1%20%28Patch%20release1%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.27.4" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.4%20%2F%20MOSK%2024.2.2%20%28Patch%20release2%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.28" ]]   && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.28%20%2F%20MOSK%2024.3%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.28.1" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.1%20%2F%20MOSK%2024.2.3%20%28Patch%20release3%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.28.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.2%20%2F%20MOSK%2024.2.4%20%28Patch%20release4%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.28.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.3%20%2F%20MOSK%2024.2.5%20%28Patch%20release5%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.28.4" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.4%20%2F%20MOSK%2024.3.1%20%28Patch%20release1%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.28.5" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.5%20%2F%20MOSK%2024.3.2%20%28Patch%20release2%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.29" ]]   && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.29%20%2F%20MOSK%2025.1%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.29.1" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.1%20%2F%20MOSK%2024.3.3%20%28Patch%20release3%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.29.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.2%20%2F%20MOSK%2024.3.4%20%28Patch%20release4%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.29.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.3%20%2F%20MOSK%2024.3.5%20%28Patch%20release5%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.29.4" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.4%20%2F%20MOSK%2024.3.6%20%28Patch%20release6%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.29.5" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.5%20%2F%20MOSK%2024.3.7%20%28Patch%20release7%29%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.30" ]]   && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30%20%2F%20MOSK%2025.2%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.30.1" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.1%20%2F%20MOSK%2025.2.1%20(Patch%20release1)%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.30.2" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.2%20%2F%20MOSK%2025.2.2%20(Patch%20release2)%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.30.3" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.3%20%2F%20MOSK%2025.2.3%20(Patch%20release3)%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.30.4" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.4%20%2F%20MOSK%2025.2.4%20(Patch%20release4)%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.30.5" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.5%20%2F%20MOSK%2025.2.5%20(Patch%20release5)%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.31" ]]   && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31%20%2F%20MOSK%2026.1%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.31.1" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.1%20%2F%20MOSK%2025.2.6%20(Patch%20release6)%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.31.2" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.2%20%2F%20MOSK%2025.2.7%20(Patch%20release7)%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.31.3" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.3%20%2F%20MOSK%2025.2.8%20(Patch%20release8)%22" >> "$OUT"
-    [[ "$MCC_BUG_VER" == "2.31.4" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.4%20%2F%20MOSK%2025.2.9%20(Patch%20release9)%22" >> "$OUT"
+    [[ "$MCC_BUG_VER" == "2.23.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.2%20%2F%20MOSK%2023.1.1%20%28Patch%20release%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.23.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.3%20%2F%20MOSK%2023.1.2%20%28Patch%20release%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.23.4" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.4%20%2F%20MOSK%2023.1.3%20%28Patch%20release%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.23.5" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.5%20%2F%20MOSK%2023.1.4%20%28Patch%20release%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.24.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.3%20%2F%20MOSK%2023.2.1%20%28Patch%20release1%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.24.4" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.4%20%2F%20MOSK%2023.2.2%20%28Patch%20release2%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.24.5" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.5%20%2F%20MOSK%2023.2.3%20%28Patch%20release3%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.25" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.25%20%2F%20MOSK%2023.3%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.25.1" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.1%20%2F%20MOSK%2023.3.1%20%28Patch%20release1%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.25.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.2%20%2F%20MOSK%2023.3.2%20%28Patch%20release2%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.25.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.3%20%2F%20MOSK%2023.3.3%20%28Patch%20release3%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.25.4" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.4%20%2F%20MOSK%2023.3.4%20%28Patch%20release4%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.26" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26%20%2F%20MOSK%2024.1%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.26.1" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.1%20%2F%20MOSK%2024.1.1%20%28Patch%20release1%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.26.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.2%20%2F%20MOSK%2024.1.2%20%28Patch%20release2%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.26.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.3%20%2F%20MOSK%2024.1.3%20%28Patch%20release3%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.26.4" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.4%20%2F%20MOSK%2024.1.4%20%28Patch%20release4%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.26.5" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.5%20%2F%20MOSK%2024.1.5%20%28Patch%20release5%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.27" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.27%20%2F%20MOSK%2024.2%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.27.1" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.1%20%2F%20MOSK%2024.1.6%20%28Patch%20release6%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.27.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.2%20%2F%20MOSK%2024.1.7%20%28Patch%20release7%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.27.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.3%20%2F%20MOSK%2024.2.1%20%28Patch%20release1%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.27.4" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.4%20%2F%20MOSK%2024.2.2%20%28Patch%20release2%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.28" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.28%20%2F%20MOSK%2024.3%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.28.1" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.1%20%2F%20MOSK%2024.2.3%20%28Patch%20release3%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.28.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.2%20%2F%20MOSK%2024.2.4%20%28Patch%20release4%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.28.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.3%20%2F%20MOSK%2024.2.5%20%28Patch%20release5%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.28.4" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.4%20%2F%20MOSK%2024.3.1%20%28Patch%20release1%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.28.5" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.5%20%2F%20MOSK%2024.3.2%20%28Patch%20release2%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.29" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.29%20%2F%20MOSK%2025.1%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.29.1" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.1%20%2F%20MOSK%2024.3.3%20%28Patch%20release3%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.29.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.2%20%2F%20MOSK%2024.3.4%20%28Patch%20release4%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.29.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.3%20%2F%20MOSK%2024.3.5%20%28Patch%20release5%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.29.4" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.4%20%2F%20MOSK%2024.3.6%20%28Patch%20release6%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.29.5" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.5%20%2F%20MOSK%2024.3.7%20%28Patch%20release7%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.30" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30%20%2F%20MOSK%2025.2%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.30.1" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.1%20%2F%20MOSK%2025.2.1%20(Patch%20release1)%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.30.2" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.2%20%2F%20MOSK%2025.2.2%20(Patch%20release2)%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.30.3" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.3%20%2F%20MOSK%2025.2.3%20(Patch%20release3)%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.30.4" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.4%20%2F%20MOSK%2025.2.4%20(Patch%20release4)%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.30.5" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.5%20%2F%20MOSK%2025.2.5%20(Patch%20release5)%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.31" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31%20%2F%20MOSK%2026.1%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.31.1" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.1%20%2F%20MOSK%2025.2.6%20(Patch%20release6)%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.31.2" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.2%20%2F%20MOSK%2025.2.7%20(Patch%20release7)%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.31.3" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.3%20%2F%20MOSK%2025.2.8%20(Patch%20release8)%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.31.4" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.4%20%2F%20MOSK%2025.2.9%20(Patch%20release9)%22" >>"$OUT"
 
     # Improved MKE Extraction
     MKE_RAW=$(grep -m1 "release: mke-" "$MCC_YAML" | sed -e 's/.*mke-//' -e 's/[[:space:]]//g' -e 's/-/./g')
-    IFS='.' read -r -a E <<< "$MKE_RAW"
+    IFS='.' read -r -a E <<<"$MKE_RAW"
     # E[0].E[1].E[2] = MKEVER4, MKEVER5, MKEVER6
     MKE_SHORT="${E[3]}.${E[4]}"
     MKE_FULL="${E[3]}-${E[4]}-${E[5]}"
-    echo "" >> "$OUT"
-    printf "## MKE Version release details: ${E[3]}.${E[4]}.${E[5]}" >> "$OUT"
-    echo "" >> "$OUT"
-    echo "https://docs.mirantis.com/mke/$MKE_SHORT/release-notes/$MKE_FULL.html" >> "$OUT"
-    echo "https://docs.mirantis.com/mke/$MKE_SHORT/release-notes/$MKE_FULL/known-issues.html" >> "$OUT"
+    echo "" >>"$OUT"
+    printf "## MKE Version release details: ${E[3]}.${E[4]}.${E[5]}" >>"$OUT"
+    echo "" >>"$OUT"
+    echo "https://docs.mirantis.com/mke/$MKE_SHORT/release-notes/$MKE_FULL.html" >>"$OUT"
+    echo "https://docs.mirantis.com/mke/$MKE_SHORT/release-notes/$MKE_FULL/known-issues.html" >>"$OUT"
 
-    echo "" >> "$OUT"
-    echo "## Details and versions:" >> "$OUT"
-    printf '# ' >> "$OUT"
-    ls $MCC_YAML >> "$OUT"
-    grep -E "release: kaas-|release: mke-|      - message" "$MCC_YAML" >> "$OUT"
-    sed -n '/          stacklight:/,/      kind:/p' "$MCC_YAML" >> "$OUT"
-    echo "" >> "$OUT"
-    
-    echo "## LCM status:" >> "$OUT"
-    printf '# ' >> "$OUT"
+    echo "" >>"$OUT"
+    echo "## Details and versions:" >>"$OUT"
+    printf '# ' >>"$OUT"
+    ls $MCC_YAML >>"$OUT"
+    grep -E "release: kaas-|release: mke-|      - message" "$MCC_YAML" >>"$OUT"
+    sed -n '/          stacklight:/,/      kind:/p' "$MCC_YAML" >>"$OUT"
+    echo "" >>"$OUT"
+
+    echo "## LCM status:" >>"$OUT"
+    printf '# ' >>"$OUT"
     LCM_MCC="./$MCCNAME/objects/namespaced/$MCCNAMESPACE/lcm.mirantis.com/lcmclusters/$MCCNAME.yaml"
     if [[ -f "$LCM_MCC" ]]; then
-        ls $LCM_MCC >> "$OUT"
-        sed -n '/  status:/,/    requestedNodes:/p' $LCM_MCC >> "$OUT"
+      ls $LCM_MCC >>"$OUT"
+      sed -n '/  status:/,/    requestedNodes:/p' $LCM_MCC >>"$OUT"
     fi
     echo "Gathering Node Conditions..."
-    echo "" >> "$OUT"
-    echo "################# [NODE CONDITIONS] #################" >> "$OUT"
+    echo "" >>"$OUT"
+    echo "################# [NODE CONDITIONS] #################" >>"$OUT"
     for nf in $(grep "/core/nodes" "$LOGPATH/files" | grep "$MCCNAME"); do
-        N_NAME=$(basename "$nf" .yaml)
-        # We use sed to grab the block for the specific type, then find the status within it
-        READY=$(grep -B 5 'type: Ready' "$nf" | grep "status:" | head -n 1 | awk '{print $NF}' | tr -d '", ')
-        DISK=$(grep -B 5 'type: DiskPressure' "$nf" | grep "status" | head -n 1 | awk '{print $NF}' | tr -d '", ')
-        
-        # Default to Unknown if extraction failed
-        [[ -z "$READY" ]] && READY="Unknown"
-        [[ -z "$DISK" ]] && DISK="Unknown"
+      N_NAME=$(basename "$nf" .yaml)
+      # We use sed to grab the block for the specific type, then find the status within it
+      READY=$(grep -B 5 'type: Ready' "$nf" | grep "status:" | head -n 1 | awk '{print $NF}' | tr -d '", ')
+      DISK=$(grep -B 5 'type: DiskPressure' "$nf" | grep "status" | head -n 1 | awk '{print $NF}' | tr -d '", ')
 
-        printf "Node: %-50s | Ready: %-8s | DiskPressure: %-8s\n" "$N_NAME" "$READY" "$DISK" >> "$OUT"
+      # Default to Unknown if extraction failed
+      [[ -z "$READY" ]] && READY="Unknown"
+      [[ -z "$DISK" ]] && DISK="Unknown"
+
+      printf "Node: %-50s | Ready: %-8s | DiskPressure: %-8s\n" "$N_NAME" "$READY" "$DISK" >>"$OUT"
     done
   #add_to_html "MCC Cluster Details" "$(cat "$OUT")"
   fi
@@ -1166,43 +1177,43 @@ fi
 
 # --- FINAL GENERATION BLOCK ---
 if [[ -n "$MCCNAME" ]] || [[ -n "$MOSNAME" ]]; then
-    echo "Finalizing UI Styling..."
+  echo "Finalizing UI Styling..."
 
-# 1. & 2. Strict Normalization
-    # Only process files that have an underscore (our intended output files)
-    for f in "$LOGPATH"/*; do
-        filename=$(basename "$f")
-        
-        # Skip the report and the index
-        [[ "$filename" == *.html || "$filename" == "files" ]] && continue
-        
-        # If the file DOES NOT have an underscore, it's a temp file (like mcc-nodes)
-        # We delete these to prevent duplicates
-        if [[ "$filename" != *_* ]]; then
-            rm "$f"
-            continue
-        fi
+  # 1. & 2. Strict Normalization
+  # Only process files that have an underscore (our intended output files)
+  for f in "$LOGPATH"/*; do
+    filename=$(basename "$f")
 
-        # If it has an underscore but no extension, add .yaml
-        if [[ "$filename" != *.yaml ]]; then
-            mv "$f" "$f.yaml"
-        fi
-    done
+    # Skip the report and the index
+    [[ "$filename" == *.html || "$filename" == "files" ]] && continue
 
-# 3. BUILD SIDEBAR LINKS
-    for yaml_file in $(ls "$LOGPATH"/*_*.yaml 2>/dev/null | sort); do
-        [[ -e "$yaml_file" ]] || continue
-        # Normalize Title: remove path, remove .yaml, underscores to spaces, uppercase
-        TITLE=$(basename "$yaml_file" .yaml | tr '_' ' ' | tr '[:lower:]' '[:upper:]')
-        # Create Anchor: spaces to dashes
-        ANCHOR=$(echo "$TITLE" | tr ' ' '-')
-        echo "<li><a href='#$ANCHOR'>$TITLE</a></li>" >> "$HTML_REPORT"
-    done
+    # If the file DOES NOT have an underscore, it's a temp file (like mcc-nodes)
+    # We delete these to prevent duplicates
+    if [[ "$filename" != *_* ]]; then
+      rm "$f"
+      continue
+    fi
 
-# 4. TRANSITION FROM SIDEBAR TO MAIN
-    printf "\n</ul>\n</nav>\n<main class=\"main-content\">\n" >> "$HTML_REPORT"
+    # If it has an underscore but no extension, add .yaml
+    if [[ "$filename" != *.yaml ]]; then
+      mv "$f" "$f.yaml"
+    fi
+  done
 
-    cat <<EOF >> "$HTML_REPORT"
+  # 3. BUILD SIDEBAR LINKS
+  for yaml_file in $(ls "$LOGPATH"/*_*.yaml 2>/dev/null | sort); do
+    [[ -e "$yaml_file" ]] || continue
+    # Normalize Title: remove path, remove .yaml, underscores to spaces, uppercase
+    TITLE=$(basename "$yaml_file" .yaml | tr '_' ' ' | tr '[:lower:]' '[:upper:]')
+    # Create Anchor: spaces to dashes
+    ANCHOR=$(echo "$TITLE" | tr ' ' '-')
+    echo "<li><a href='#$ANCHOR'>$TITLE</a></li>" >>"$HTML_REPORT"
+  done
+
+  # 4. TRANSITION FROM SIDEBAR TO MAIN
+  printf "\n</ul>\n</nav>\n<main class=\"main-content\">\n" >>"$HTML_REPORT"
+
+  cat <<EOF >>"$HTML_REPORT"
 <button class="toggle-sidebar-btn" onclick="toggleSidebar()" title="Toggle Sidebar">◀</button>
 
 <div class="header">
@@ -1211,42 +1222,41 @@ if [[ -n "$MCCNAME" ]] || [[ -n "$MOSNAME" ]]; then
 </div>
 EOF
 
-# 5. BUILD CONTENT CARDS
-    for yaml_file in $(ls "$LOGPATH"/*_*.yaml 2>/dev/null | sort); do
-        [[ -e "$yaml_file" ]] || continue
-        TITLE=$(basename "$yaml_file" .yaml | tr '_' ' ' | tr '[:lower:]' '[:upper:]')
-        ANCHOR=$(echo "$TITLE" | tr ' ' '-')
-        
-        {
-            echo "<div class='card' id='$ANCHOR'>"
-            echo "  <h2>$TITLE"
-            echo "    <div class='card-header-actions'>"
-            echo "      <span class='btn-tool btn-copy' onclick=\"copyToClipboard(this, '$ANCHOR')\">Copy</span>"
-            echo "      <span class='btn-tool wrap-btn' onclick=\"toggleBlockWrap(this, '$ANCHOR')\">Wrap: OFF</span>"
-            echo "      <a href='#' class='back-to-top'>Top</a>"
-            echo "    </div>"
-            echo "  </h2>"
-            echo "  <pre class='language-yaml raw-code'><code>"
-            
-            # Simple, fast escaping of content
-            sed 's/\xc2\xa0/ /g; s/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' "$yaml_file"
-            
-            echo "  </code></pre>"
-            echo "</div>"
-        } >> "$HTML_REPORT"
-    done
+  # 5. BUILD CONTENT CARDS
+  for yaml_file in $(ls "$LOGPATH"/*_*.yaml 2>/dev/null | sort); do
+    [[ -e "$yaml_file" ]] || continue
+    TITLE=$(basename "$yaml_file" .yaml | tr '_' ' ' | tr '[:lower:]' '[:upper:]')
+    ANCHOR=$(echo "$TITLE" | tr ' ' '-')
+
+    {
+      echo "<div class='card' id='$ANCHOR'>"
+      echo "  <h2>$TITLE"
+      echo "    <div class='card-header-actions'>"
+      echo "      <span class='btn-tool btn-copy' onclick=\"copyToClipboard(this, '$ANCHOR')\">Copy</span>"
+      echo "      <span class='btn-tool wrap-btn' onclick=\"toggleBlockWrap(this, '$ANCHOR')\">Wrap: OFF</span>"
+      echo "      <a href='#' class='back-to-top'>Top</a>"
+      echo "    </div>"
+      echo "  </h2>"
+      echo "  <pre class='language-yaml raw-code'><code>"
+
+      # Simple, fast escaping of content
+      sed 's/\xc2\xa0/ /g; s/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' "$yaml_file"
+
+      echo "  </code></pre>"
+      echo "</div>"
+    } >>"$HTML_REPORT"
+  done
 
 # 6. CLOSE DOCUMENT
     printf "\n</main>\n" >> "$HTML_REPORT"
-    printf "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js\"></script>\n" >> "$HTML_REPORT"
+    printf "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js\" data-manual></script>\n" >> "$HTML_REPORT"
     printf "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js\"></script>\n" >> "$HTML_REPORT"
     printf "</body>\n</html>" >> "$HTML_REPORT"
 
-    echo "✅ Dashboard ready: $HTML_REPORT"
-    xdg-open "$HTML_REPORT" 2>/dev/null || open "$HTML_REPORT" 2>/dev/null
+  echo "✅ Dashboard ready: $HTML_REPORT"
+  xdg-open "$HTML_REPORT" 2>/dev/null || open "$HTML_REPORT" 2>/dev/null
 fi
 if [[ -z "$MCCNAME" ]] && [[ -z "$MOSNAME" ]]; then
   # Delete myrha folder as neither MCC and MOS clusters were found:
   rm -rf $LOGPATH 2>/dev/null
 fi
-
