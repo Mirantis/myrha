@@ -7,14 +7,12 @@ HTML_REPORT="$LOGPATH/report_$DATE.html"
 FULL_CWD=$(pwd)
 mkdir $LOGPATH 2>/dev/null
 rm -f "$LOGPATH"/* 2>/dev/null
-
 for cmd in rg nvim subl yq bc; do
   if ! command -v "$cmd" &>/dev/null; then
     echo "Installing $cmd..."
     sudo apt-get install "$cmd" -y 2>/dev/null || sudo dnf install "$cmd" -y 2>/dev/null
   fi
 done
-
 # --- HTML Initialization ---
 cat <<EOF >"$HTML_REPORT"
 <!DOCTYPE html>
@@ -32,10 +30,9 @@ cat <<EOF >"$HTML_REPORT"
         --sidebar-width: 300px;
         --sidebar-link: #ffffff;
         --sidebar-hover: #3498db;
+        --danger: #e74c3c;
     }
-    
     body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; min-height: 100vh; transition: all 0.3s; }
-    
     /* Sidebar Styling */
     .sidebar { 
         width: var(--sidebar-width); height: 100vh; background: var(--primary); 
@@ -44,7 +41,12 @@ cat <<EOF >"$HTML_REPORT"
         transition: margin-left 0.3s; 
     }
     body.sidebar-hidden .sidebar { margin-left: calc(var(--sidebar-width) * -1); }
-    
+    .search-box {
+        width: 100%; padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);
+        margin-bottom: 20px; background: rgba(255,255,255,0.05); color: white;
+        font-size: 0.85rem; outline: none; transition: 0.2s;
+    }
+    .search-box:focus { background: rgba(255,255,255,0.15); border-color: var(--accent); }
     .sidebar h3 { border-bottom: 2px solid var(--accent); padding-bottom: 10px; font-size: 1.1rem; margin-top: 0; color: white; }
     .sidebar ul { list-style: none; padding: 0; }
     .sidebar a { 
@@ -52,11 +54,9 @@ cat <<EOF >"$HTML_REPORT"
         display: block; padding: 8px 12px; border-radius: 4px; transition: 0.2s; margin-bottom: 2px;
     }
     .sidebar a:hover { background: rgba(255, 255, 255, 0.1); color: var(--sidebar-hover); padding-left: 15px; }
-    
+    .sidebar li.hidden { display: none; }
     .main-content { flex: 1; padding: 40px; box-sizing: border-box; overflow-x: hidden; transition: width 0.3s; }
     .header { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 30px; border-left: 8px solid var(--accent); position: relative; }
-    
-    /* Fixed Toggle Sidebar Button */
     .toggle-sidebar-btn { 
         position: fixed; left: 275px; top: 20px; 
         background: var(--accent); color: white; border: none; 
@@ -66,14 +66,13 @@ cat <<EOF >"$HTML_REPORT"
         display: flex; align-items: center; justify-content: center;
     }
     body.sidebar-hidden .toggle-sidebar-btn { left: 15px; transform: rotate(180deg); }
-
-    /* Card Styling - Optimized for Lazy Loading */
-    .card { background: white; border-radius: 12px; padding: 25px; margin-bottom: 35px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); min-height: 200px; }
+    /* Card Styling */
+    .card { background: white; border-radius: 12px; padding: 25px; margin-bottom: 35px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); min-height: 200px; border-left: 5px solid transparent; }
+    /* Alert Card Highlight - Targets the summary card specifically */
+    .card[id*="CERTIFICATE-ALERTS"] { border-left: 8px solid var(--danger); background: #fffcfc; }
+    .card[id*="CERTIFICATE-ALERTS"] h2 { color: var(--danger); }
     h2 { color: var(--primary); margin: 0 0 15px 0; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 10px; }
-
-    /* Action Buttons in Card Header */
     .card-header-actions { display: flex; align-items: center; gap: 8px; }
-    
     .btn-tool {
         font-size: 0.7rem; background: #eee; color: #666; 
         padding: 4px 10px; border-radius: 4px; border: 1px solid #ddd;
@@ -83,27 +82,30 @@ cat <<EOF >"$HTML_REPORT"
     .btn-tool:hover { background: #e0e0e0; border-color: #ccc; color: #333; }
     .btn-tool.active { background: var(--accent); color: white; border-color: var(--accent); }
     .btn-copy.success { background: #27ae60 !important; color: white !important; border-color: #2ecc71 !important; }
-
     .back-to-top { 
         font-size: 0.7rem; background: var(--accent); color: white !important; 
         padding: 5px 10px; border-radius: 4px; text-decoration: none !important; font-weight: bold;
     }
-
-    /* Code Block Styling */
     pre[class*="language-"] { max-height: 500px; border-radius: 8px; }
     pre[class*="language-"].raw-code { white-space: pre !important; word-break: normal !important; overflow-x: auto !important; }
     pre[class*="language-"].wrapped-code { white-space: pre-wrap !important; word-break: break-all !important; overflow-x: hidden !important; }
     pre[class*="language-"] code { white-space: inherit !important; word-break: inherit !important; }
-
     .card { scroll-margin-top: 20px; }
 </style>
-
 <script>
     function toggleSidebar() {
         document.body.classList.toggle('sidebar-hidden');
     }
-
-    // Initialize Prism Highlighting only when card is visible
+    // Sidebar Filtering Logic
+    function filterSidebar() {
+        const query = document.getElementById('sidebarSearch').value.toLowerCase();
+        const items = document.querySelectorAll('#sidebarList li');
+        items.forEach(item => {
+            const text = item.innerText.toLowerCase();
+            item.classList.toggle('hidden', !text.includes(query));
+        });
+    }
+    // Initialize Prism Highlighting only when card is visible (Lazy Load)
     const observer = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
             if (entry.isIntersecting) {
@@ -115,11 +117,9 @@ cat <<EOF >"$HTML_REPORT"
             }
         });
     }, { threshold: 0.1 });
-
     window.onload = () => {
         document.querySelectorAll('.card').forEach(card => observer.observe(card));
     };
-
     function toggleBlockWrap(btn, anchor) {
         const card = document.getElementById(anchor);
         const codeBlock = card.querySelector('pre');
@@ -128,7 +128,6 @@ cat <<EOF >"$HTML_REPORT"
         btn.classList.toggle('active');
         btn.innerText = codeBlock.classList.contains('wrapped-code') ? 'Wrap: ON' : 'Wrap: OFF';
     }
-
     async function copyToClipboard(btn, anchor) {
         const card = document.getElementById(anchor);
         const code = card.querySelector('code').innerText;
@@ -141,48 +140,25 @@ cat <<EOF >"$HTML_REPORT"
                 btn.innerText = originalText;
                 btn.classList.remove('success');
             }, 2000);
-        } catch (err) { console.error(err); }
+        } catch (err) { console.error('Copy failed:', err); }
     }
 </script>
 </head>
 <body>
     <nav class="sidebar">
         <h3>AUDIT SECTIONS</h3>
+        <input type="text" class="search-box" id="sidebarSearch" placeholder="Filter sections..." onkeyup="filterSidebar()">
         <ul id="sidebarList">
 EOF
-
-# Helper function to sync YAML content to HTML
-#add_to_html() {
-#    local title="$1"
-#    local content="$2"
-#    local anchor="$(echo "$title" | tr ' ' '-')"
-#    [[ -z "$content" ]] && return
-#    echo "<div class='card' id='$anchor'>
-#            <a href='#' class='back-to-top'>↑ Top</a>
-#            <h2>$title</h2>
-#            <pre>$content</pre>
-#          </div>" >> "$HTML_REPORT"
-#}
-
-# --- Cert audit function ---
+# --- Cert audit function (Hardened & Informative) ---
 audit_k8s_secret() {
   local YAML_FILE="$1"
-
-  if [[ -z "$YAML_FILE" || ! -f "$YAML_FILE" ]]; then
-    echo "❌ Error: File '$YAML_FILE' not found."
-    return 1
-  fi
+  if [[ -z "$YAML_FILE" || ! -f "$YAML_FILE" ]]; then return 1; fi
 
   local TMP_DIR=$(mktemp -d)
-  local IS_WRAPPED=$(yq eval 'has("Object")' "$YAML_FILE" 2>/dev/null)
-  local DATA_PATH=".data"
-  [[ "$IS_WRAPPED" == "true" ]] && DATA_PATH=".Object.data"
-
-  local KEYS=$(yq eval "$DATA_PATH | keys | .[]" "$YAML_FILE" 2>/dev/null)
-  [[ -z "$KEYS" ]] && {
-    rm -rf "$TMP_DIR"
-    return 1
-  }
+  local DATA_EXPR='(.Object.data // .data // .Object.stringData // .stringData)'
+  local KEYS=$(yq eval "$DATA_EXPR | keys | .[]" "$YAML_FILE" 2>/dev/null)
+  [[ -z "$KEYS" ]] && { rm -rf "$TMP_DIR"; return 1; }
 
   echo "===================================================="
   echo "🔍 AUDIT REPORT: $(basename "$YAML_FILE")"
@@ -193,81 +169,122 @@ audit_k8s_secret() {
   local PRIVATE_KEY=""
 
   for KEY in $KEYS; do
-    local VAL=$(yq eval "$DATA_PATH.\"$KEY\"" "$YAML_FILE" | tr -d '[:space:]')
+    local VAL=$(yq eval "$DATA_EXPR.\"$KEY\"" "$YAML_FILE" | tr -d '[:space:]')
     local TARGET_FILE="$TMP_DIR/$KEY"
+    
+    # Try decoding
     echo "$VAL" | base64 -d >"$TARGET_FILE" 2>/dev/null
+    # If not base64/PEM, treat as plain text
+    if ! grep -q "BEGIN" "$TARGET_FILE" 2>/dev/null; then echo "$VAL" > "$TARGET_FILE"; fi
 
-    local CONTENT_TYPE=$(grep -m 1 "BEGIN" "$TARGET_FILE")
+    local CONTENT_TYPE=$(grep -m 1 "BEGIN" "$TARGET_FILE" 2>/dev/null)
+    [[ -z "$CONTENT_TYPE" ]] && continue
+
     echo "--- Field: [$KEY] ---"
 
     if [[ "$CONTENT_TYPE" == *"PRIVATE KEY"* ]]; then
-      PRIVATE_KEY="$TARGET_FILE"
-      cat "$TARGET_FILE"
-      echo -e "\n----------------------------------------------------"
-      local K_MD5=$(openssl rsa -noout -modulus -in "$TARGET_FILE" 2>/dev/null | openssl md5 | awk '{print $NF}')
-      echo "🔑 Key Modulus MD5: $K_MD5"
+      # Silent Probe: Only process if it's a valid key (RSA/EC)
+      if openssl pkey -in "$TARGET_FILE" -text -noout &>/dev/null; then
+          PRIVATE_KEY="$TARGET_FILE"
+          cat "$TARGET_FILE"
+          echo -e "\n----------------------------------------------------"
+          K_MOD=$(openssl rsa -noout -modulus -in "$TARGET_FILE" 2>/dev/null | openssl md5 | awk '{print $NF}')
+          echo "🔢 RSA Modulus MD5: ${K_MOD:-[Non-RSA Key]}"
+      fi
 
     elif [[ "$CONTENT_TYPE" == *"CERTIFICATE"* ]]; then
-      cat "$TARGET_FILE"
-      echo -e "\n----------------------------------------------------"
+      if openssl x509 -in "$TARGET_FILE" -noout &>/dev/null; then
+          cat "$TARGET_FILE"
+          echo -e "\n----------------------------------------------------"
 
-      local CN=$(openssl x509 -noout -subject -in "$TARGET_FILE" -nameopt RFC2253 | sed 's/.*CN=//;s/,.*//')
-      local EXPIRY=$(openssl x509 -noout -enddate -in "$TARGET_FILE" | cut -d= -f2)
-      local ISSUER=$(openssl x509 -noout -issuer -in "$TARGET_FILE" -nameopt RFC2253)
-      local SUBJECT=$(openssl x509 -noout -subject -in "$TARGET_FILE" -nameopt RFC2253)
-      local C_MD5=$(openssl x509 -noout -modulus -in "$TARGET_FILE" | openssl md5 | awk '{print $NF}')
-      local SAN=$(openssl x509 -noout -ext subjectAltName -in "$TARGET_FILE" 2>/dev/null | tail -n +2 | sed 's/^[[:space:]]*//')
+          local CN=$(openssl x509 -noout -subject -in "$TARGET_FILE" -nameopt RFC2253 | sed 's/.*CN=//;s/,.*//')
+          local ISSUER=$(openssl x509 -noout -issuer -in "$TARGET_FILE" -nameopt RFC2253 | sed 's/^issuer=//')
+          local SUBJECT=$(openssl x509 -noout -subject -in "$TARGET_FILE" -nameopt RFC2253 | sed 's/^subject=//')
+          local EXPIRY=$(openssl x509 -noout -enddate -in "$TARGET_FILE" | cut -d= -f2)
+          local IS_CA=$(openssl x509 -noout -text -in "$TARGET_FILE" 2>/dev/null | grep "CA:TRUE")
+          C_MOD=$(openssl x509 -noout -modulus -in "$TARGET_FILE" 2>/dev/null | openssl md5 | awk '{print $NF}')
 
-      echo "📋 CN:      $CN"
-      echo "🌐 SAN:     ${SAN:-None}"
-      echo "📅 Expires: $EXPIRY"
-      echo "🔢 Cert Modulus MD5: $C_MD5"
+          echo "📋 CN:      ${CN:-Unknown}"
+          echo "📅 Expires: $EXPIRY"
+          echo "🔢 Modulus MD5: ${C_MOD:-[Non-RSA Cert]}"
 
-      if [[ "$KEY" == *"ca"* || "$ISSUER" == "$SUBJECT" ]]; then
-        CA_CERT="$TARGET_FILE"
-        echo "🏢 Role:    CA/Root Certificate"
-      else
-        LEAF_CERT="$TARGET_FILE"
-        echo "🌿 Role:    Leaf/Server Certificate"
+          # --- Expiry Alert Logic ---
+          EXPIRY_SEC=$(date -d "$EXPIRY" +%s 2>/dev/null)
+          NOW_SEC=$(date +%s)
+          if [[ -n "$EXPIRY_SEC" ]]; then
+              if [ "$EXPIRY_SEC" -lt "$NOW_SEC" ]; then
+                  echo "📅 ALERT:   🛑 EXPIRED"
+              elif [ "$EXPIRY_SEC" -lt $((NOW_SEC + 2592000)) ]; then
+                  echo "📅 ALERT:   🚨 EXPIRING SOON (within 30 days)"
+              fi
+          fi
+
+          if [[ "$ISSUER" == "$SUBJECT" ]]; then
+              echo "🧬 Status:  ⚠️ ROOT CA (Self-Signed)"
+              CA_CERT="$TARGET_FILE"
+          elif [[ -n "$IS_CA" ]]; then
+              echo "🧬 Status:  🔗 INTERMEDIATE CA"
+              CA_CERT="$TARGET_FILE"
+          else
+              echo "🧬 Status:  📄 LEAF CERTIFICATE"
+              LEAF_CERT="$TARGET_FILE"
+          fi
       fi
     fi
     echo ""
   done
 
+  # --- FINAL VALIDATIONS ---
   echo "===================================================="
   echo "⚖️  FINAL VALIDATIONS"
   echo "===================================================="
+  
+  local CHECKS_RUN=0
 
-  # 1. Private Key vs Leaf Certificate Match
-  printf "Match (Key <-> Leaf): "
+  # 1. Private Key vs Leaf Cert
   if [[ -n "$LEAF_CERT" && -n "$PRIVATE_KEY" ]]; then
-    local FINAL_C_MD5=$(openssl x509 -noout -modulus -in "$LEAF_CERT" | openssl md5 | awk '{print $NF}')
-    local FINAL_K_MD5=$(openssl rsa -noout -modulus -in "$PRIVATE_KEY" 2>/dev/null | openssl md5 | awk '{print $NF}')
-    [[ "$FINAL_C_MD5" == "$FINAL_K_MD5" ]] && echo "✅ VALID" || echo "❌ MISMATCH"
-  else
-    echo "ℹ️  SKIPPED (Missing either Private Key or Leaf Cert)"
+    LM=$(openssl x509 -noout -modulus -in "$LEAF_CERT" 2>/dev/null | openssl md5)
+    KM=$(openssl rsa -noout -modulus -in "$PRIVATE_KEY" 2>/dev/null | openssl md5)
+    printf "Match (Key <-> Leaf): "
+    if [[ -n "$LM" && "$LM" == "$KM" ]]; then
+        echo "✅ VALID"
+    else
+        echo "❌ MISMATCH"
+    fi
+    CHECKS_RUN=1
   fi
 
-  # 2. Trust Chain Validation
-  printf "Chain (Leaf <-> CA):  "
+  # 2. Leaf Cert vs CA Cert
   if [[ -n "$LEAF_CERT" && -n "$CA_CERT" ]]; then
-    local VERIFY_OUT=$(openssl verify -CAfile "$CA_CERT" "$LEAF_CERT" 2>&1)
-    [[ "$VERIFY_OUT" == *"OK"* ]] && echo "✅ VERIFIED" || echo "❌ FAILED ($VERIFY_OUT)"
-  else
-    echo "ℹ️  SKIPPED (Missing either CA Cert or Leaf Cert)"
+    printf "Chain (Leaf <-> CA):  "
+    if openssl verify -CAfile "$CA_CERT" "$LEAF_CERT" 2>/dev/null | grep -q "OK"; then
+        echo "✅ VERIFIED"
+    else
+        echo "❌ FAILED"
+    fi
+    CHECKS_RUN=1
+  fi
+
+  # 3. Fallback message if no related pairs were found
+  if [[ $CHECKS_RUN -eq 0 ]]; then
+      if [[ -n "$CA_CERT" && -z "$LEAF_CERT" ]]; then
+          echo "ℹ️  INFO: Standalone CA/Self-Signed cert (no chain to verify)."
+      elif [[ -n "$PRIVATE_KEY" && -z "$LEAF_CERT" ]]; then
+          echo "ℹ️  INFO: Standalone Private Key (no certificate to match)."
+      else
+          echo "ℹ️  INFO: No related crypto pairs found for validation."
+      fi
   fi
 
   rm -rf "$TMP_DIR"
-  echo "===================================================="
   echo ""
 }
 
 echo "Generating report. This operation may take several minutes... Please wait."
-
+echo ""
 # List all files on logs:
 echo "🚀 Indexing files and starting analysis..."
 find . -not -path '$LOGPATH' -type f -name '*' >$LOGPATH/files
-
 # Discover MCC and MOS cluster name and namespace:
 if ls */objects/namespaced/default/cluster.k8s.io/clusters/*.yaml 2>/dev/null 1>/dev/null; then
   MCC_FILE=$(ls */objects/namespaced/default/cluster.k8s.io/clusters/*.yaml 2>/dev/null | head -n 1)
@@ -280,34 +297,27 @@ fi
 if [[ -n "$MCCNAME" ]]; then
   MOSNAMESPACE=$(grep -m1 "    namespace: " $(ls ./"$MCCNAME"/objects/namespaced/*/cluster.k8s.io/clusters/*.yaml | grep -v default 2>/dev/null) | awk '{print $2}')
 fi
-
 if [[ -n "$MOSNAME" ]]; then
   OUT="$LOGPATH/mos_cluster"
   echo "Gathering MOS cluster details..."
   echo "################# [MOS CLUSTER DETAILS] #################" >"$OUT"
-
   MOS_STATUS_FILE=$(ls ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml 2>/dev/null | head -n 1)
-
   if [[ -n "$MOS_STATUS_FILE" ]]; then
     # Unified split for MOS (e.g., 21.0.0+25.2.9)
     REL_RAW=$(grep -m1 "    release: " "$MOS_STATUS_FILE" | sed -e 's/.*release: //' -e 's/[[:space:]]//g' -e 's/+/./g')
     IFS='.' read -r -a V <<<"$REL_RAW"
     # V[0]=VER1, V[1]=VER2, V[2]=VER3, V[3]=VER4, V[4]=VER5, V[5]=VER6
-
     printf "## MOS release details (Managed): ${V[0]}.${V[1]}.${V[2]}+${V[3]}.${V[4]}.${V[5]}" >>"$OUT"
     echo "" >>"$OUT"
-
     if (($(echo "${V[3]}.${V[4]} >= 25.2" | bc -l))); then
       echo "https://docs.mirantis.com/mosk/25.2/release-notes/25.2-series/25.2.${V[5]}.html" | sed 's/\.\././' >>"$OUT"
     else
       echo "https://docs.mirantis.com/mosk/25.1-and-earlier/release-notes/release-notes-mosk-old/${V[3]}.${V[4]}-series/${V[3]}.${V[4]}.${V[5]}.html" | sed 's/\.\././' >>"$OUT"
     fi
     echo "" >>"$OUT"
-
     MOS_BUG_VER="${V[3]}.${V[4]}.${V[5]}"
     printf "## MOS Bugs - $MOS_BUG_VER:" >>"$OUT"
     echo "" >>"$OUT"
-
     # Full Jira Restoration (MOS)
     [[ "$MOS_BUG_VER" == "23.1.1" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.2%20%2F%20MOSK%2023.1.1%20%28Patch%20release%29%22" >>"$OUT"
     [[ "$MOS_BUG_VER" == "23.1.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.3%20%2F%20MOSK%2023.1.2%20%28Patch%20release%29%22" >>"$OUT"
@@ -350,7 +360,6 @@ if [[ -n "$MOSNAME" ]]; then
     [[ "$MOS_BUG_VER" == "25.2.3" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.3%20%2F%20MOSK%2025.2.3%20(Patch%20release3)%22" >>"$OUT"
     [[ "$MOS_BUG_VER" == "25.2.4" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.4%20%2F%20MOSK%2025.2.4%20(Patch%20release4)%22" >>"$OUT"
     [[ "$MOS_BUG_VER" == "25.2.5" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.5%20%2F%20MOSK%2025.2.5%20(Patch%20release5)%22" >>"$OUT"
-
     echo "" >>"$OUT"
     echo "## Details and versions:" >>"$OUT"
     printf '# ' >>"$OUT"
@@ -358,14 +367,12 @@ if [[ -n "$MOSNAME" ]]; then
     grep -m1 "      release:" $MOS_STATUS_FILE >>"$OUT"
     grep -m1 "      openstack_version:" $MOS_STATUS_FILE >>"$OUT"
     sed -n '/    services:/,$p' $MOS_STATUS_FILE >>"$OUT"
-
     if [[ -n "$MCCNAME" ]]; then
       echo "## LCM status:" >>"$OUT"
       printf '# ' >>"$OUT"
       LCM_YAML="./$MCCNAME/objects/namespaced/$MOSNAMESPACE/lcm.mirantis.com/lcmclusters/$MOSNAME.yaml"
       [[ -f "$LCM_YAML" ]] && ls $LCM_YAML >>"$OUT"
       [[ -f "$LCM_YAML" ]] && sed -n '/  status:/,/    requestedNodes:/p' $LCM_YAML >>"$OUT"
-
       echo "" >>"$OUT"
       echo "Gathering Node Conditions..."
       echo "################# [NODE CONDITIONS] #################" >>"$OUT"
@@ -374,18 +381,14 @@ if [[ -n "$MOSNAME" ]]; then
         # We use sed to grab the block for the specific type, then find the status within it
         READY=$(grep -B 5 'type: Ready' "$nf" | grep "status:" | head -n 1 | awk '{print $NF}' | tr -d '", ')
         DISK=$(grep -B 5 'type: DiskPressure' "$nf" | grep "status" | head -n 1 | awk '{print $NF}' | tr -d '", ')
-
         # Default to Unknown if extraction failed
         [[ -z "$READY" ]] && READY="Unknown"
         [[ -z "$DISK" ]] && DISK="Unknown"
-
         printf "Node: %-50s | Ready: %-8s | DiskPressure: %-8s\n" "$N_NAME" "$READY" "$DISK" >>"$OUT"
       done
     fi
-    #add_to_html "Node Health Status" "$(cat "$OUT")"
   fi
 fi
-
 if [[ -n "$MOSNAME" ]]; then
   OUT="$LOGPATH/mos_events"
   echo "Gathering MOS cluster events..."
@@ -396,7 +399,6 @@ if [[ -n "$MOSNAME" ]]; then
   ls ./$MOSNAME/objects/events.log >>"$OUT"
   grep -E "Warning|Error" ./$MOSNAME/objects/events.log | sort -M >>"$OUT"
 fi
-
 if [[ -n "$MOSNAME" ]]; then
   OUT="$LOGPATH/mos_nodes"
   echo "Gathering MOS node details..."
@@ -419,7 +421,6 @@ if [[ -n "$MOSNAME" ]]; then
     sed -n '/    conditions:/,/    daemonEndpoints:/p' $line | head -n -1
   done <$LOGPATH/mos-nodes >>"$OUT"
 fi
-
 if [[ -n "$MCCNAME" ]]; then
   OUT="$LOGPATH/mos_lcmmachine"
   echo "Gathering MOS LCM machine details..."
@@ -442,7 +443,28 @@ if [[ -n "$MCCNAME" ]]; then
   done <$LOGPATH/mos-lcmmachine >>"$OUT"
   echo "" >>"$OUT"
 fi
-
+if [[ -n "$MCCNAME" ]]; then
+  OUT="$LOGPATH/mos_machine"
+  echo "Gathering MOS machine details..."
+  echo "################# [MOS MACHINE DETAILS] #################" >"$OUT"
+  grep ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/cluster.k8s.io/machines $LOGPATH/files >$LOGPATH/mos-machine
+  echo "" >>"$OUT"
+  printf '## Machines' >>"$OUT"
+  printf " (Total: $(wc -l <$LOGPATH/mos-machine))" >>"$OUT"
+  echo "" >>"$OUT"
+  while read -r line; do
+    printf "# "
+    printf "$line" | awk -F "/" -v 'OFS=/' '{print $8}' | sed 's|\.yaml||g'
+  done <$LOGPATH/mos-machine >>"$OUT"
+  echo "" >>"$OUT"
+  while read -r line; do
+    printf "# $line:"
+    echo ""
+    sed -n '/  status:/,/    tokenSecret:/p' $line
+    echo ""
+  done <$LOGPATH/mos-machine >>"$OUT"
+  echo "" >>"$OUT"
+fi
 if [[ -n "$MOSNAME" ]]; then
   OUT="$LOGPATH/mos_ceph"
   echo "Gathering MOS Ceph details..."
@@ -478,7 +500,6 @@ if [[ -n "$MOSNAME" ]]; then
     echo ""
   done <$LOGPATH/ceph-osd >>"$OUT"
 fi
-
 if [[ -n "$MOSNAME" ]]; then
   OUT="$LOGPATH/mos_openstack"
   echo "Gathering MOS Openstack details and logs..."
@@ -593,7 +614,6 @@ if [[ -n "$MOSNAME" ]]; then
     echo ""
   done <$LOGPATH/mos-openstack-rabbitmq >>"$OUT"
 fi
-
 if [[ -n "$MOSNAME" ]]; then
   OUT="$LOGPATH/mos_mariadb"
   echo "Gathering MOS Mariadb details and logs..."
@@ -612,63 +632,18 @@ if [[ -n "$MOSNAME" ]]; then
   echo "## Logs from server-0 pods (Errors/Warnings):" >>"$OUT"
   printf '# ' >>"$OUT"
   ls ./$MOSNAME/objects/namespaced/openstack/core/pods/mariadb-server-0/mariadb.log >>"$OUT"
-  grep -E 'ERR|WARN' ./$MOSNAME/objects/namespaced/openstack/core/pods/mariadb-server-0/mariadb.log | sed -r '/^\s*$/d' >>"$OUT"
+  awk '/ERR|WARN/ && !/WARNING - Collision writing configmap/ && NF' "./$MOSNAME/objects/namespaced/openstack/core/pods/mariadb-server-2/mariadb.log" >> "$OUT"
   echo "" >>"$OUT"
   echo "## Logs from server-1 pods (Errors/Warnings):" >>"$OUT"
   printf '# ' >>"$OUT"
   ls ./$MOSNAME/objects/namespaced/openstack/core/pods/mariadb-server-1/mariadb.log >>"$OUT"
-  grep -E 'ERR|WARN' ./$MOSNAME/objects/namespaced/openstack/core/pods/mariadb-server-1/mariadb.log | sed -r '/^\s*$/d' >>"$OUT"
+  awk '/ERR|WARN/ && !/WARNING - Collision writing configmap/ && NF' "./$MOSNAME/objects/namespaced/openstack/core/pods/mariadb-server-2/mariadb.log" >> "$OUT"
   echo "" >>"$OUT"
   echo "## Logs from server-2 pods (Errors/Warnings):" >>"$OUT"
   printf '# ' >>"$OUT"
   ls ./$MOSNAME/objects/namespaced/openstack/core/pods/mariadb-server-2/mariadb.log >>"$OUT"
-  grep -E 'ERR|WARN' ./$MOSNAME/objects/namespaced/openstack/core/pods/mariadb-server-2/mariadb.log | sed -r '/^\s*$/d' >>"$OUT"
+  awk '/ERR|WARN/ && !/WARNING - Collision writing configmap/ && NF' "./$MOSNAME/objects/namespaced/openstack/core/pods/mariadb-server-2/mariadb.log" >> "$OUT"
 fi
-
-if [[ -n "$MOSNAME" ]]; then
-  OUT="$LOGPATH/mos_certs"
-  echo "Gathering MOS certificates..."
-  echo "################# [MOS CERTIFICATE DETAILS] #################" >"$OUT"
-  echo "" >>"$OUT"
-  echo "## TF certificates:" >>"$OUT"
-  printf '# ' >>"$OUT"
-  ls ./$MOSNAME/objects/namespaced/tf/core/secrets/tungstenfabric-operator-webhook-server-cert.yaml >>"$OUT"
-  audit_k8s_secret "./$MOSNAME/objects/namespaced/tf/core/secrets/tungstenfabric-operator-webhook-server-cert.yaml" >>"$OUT"
-  printf '# ' >>"$OUT"
-  ls ./$MOSNAME/objects/namespaced/tf/core/secrets/tfwebui-tls-public.yaml >>"$OUT"
-  audit_k8s_secret "./$MOSNAME/objects/namespaced/tf/core/secrets/tfwebui-tls-public.yaml" >>"$OUT"
-  echo "" >>"$OUT"
-  echo "## OIDC certificates:" >>"$OUT"
-  printf '# ' >>"$OUT"
-  ls ./$MOSNAME/objects/namespaced/openstack/core/secrets/oidc-cert.yaml >>"$OUT"
-  audit_k8s_secret "./$MOSNAME/objects/namespaced/openstack/core/secrets/oidc-cert.yaml" >>"$OUT"
-  echo "" >>"$OUT"
-  echo "## Octavia certificates:" >>"$OUT"
-  printf '# ' >>"$OUT"
-  ls ./$MOSNAME/objects/namespaced/openstack/core/secrets/octavia-amphora-tls-certs.yaml >>"$OUT"
-  audit_k8s_secret "./$MOSNAME/objects/namespaced/openstack/core/secrets/octavia-amphora-tls-certs.yaml" >>"$OUT"
-  echo "" >>"$OUT"
-  echo "## Horizon certificates:" >>"$OUT"
-  printf '# ' >>"$OUT"
-  ls ./$MOSNAME/objects/namespaced/openstack/core/secrets/horizon-tls-public.yaml >>"$OUT"
-  audit_k8s_secret "./$MOSNAME/objects/namespaced/openstack/core/secrets/horizon-tls-public.yaml" >>"$OUT"
-  echo "" >>"$OUT"
-  echo "## Keystone certificates:" >>"$OUT"
-  printf '# ' >>"$OUT"
-  ls ./$MOSNAME/objects/namespaced/openstack/core/secrets/keystone-tls-public.yaml >>"$OUT"
-  audit_k8s_secret "./$MOSNAME/objects/namespaced/openstack/core/secrets/keystone-tls-public.yaml" >>"$OUT"
-  echo "" >>"$OUT"
-  echo "## CEPH RGW certificates:" >>"$OUT"
-  printf '# ' >>"$OUT"
-  ls ./$MOSNAME/objects/namespaced/rook-ceph/core/secrets/rgw-ssl-certificate.yaml >>"$OUT"
-  audit_k8s_secret "./$MOSNAME/objects/namespaced/rook-ceph/core/secrets/rgw-ssl-certificate.yaml" >>"$OUT"
-  echo "" >>"$OUT"
-  echo "## Stacklight certificates:" >>"$OUT"
-  printf '# ' >>"$OUT"
-  ls ./$MOSNAME/objects/namespaced/stacklight/core/secrets/oidc-cert.yaml >>"$OUT"
-  audit_k8s_secret "./$MOSNAME/objects/namespaced/stacklight/core/secrets/oidc-cert.yaml" >>"$OUT"
-fi
-
 if [[ -n "$MCCNAME" ]]; then
   OUT="$LOGPATH/mos_ipamhost"
   echo "Gathering MOS Ipamhost details..."
@@ -690,7 +665,6 @@ if [[ -n "$MCCNAME" ]]; then
     echo ""
   done <$LOGPATH/mos-ipamhost >>"$OUT"
 fi
-
 if [[ -n "$MCCNAME" ]]; then
   OUT="$LOGPATH/mos_l2template"
   echo "Gathering MOS L2template details..."
@@ -706,6 +680,29 @@ if [[ -n "$MCCNAME" ]]; then
     sed -n '/  spec:/,/    state:/p' $line
     echo ""
   done <$LOGPATH/mos-l2template >>"$OUT"
+fi
+
+if [[ -n "$MCCNAME" ]]; then
+  OUT="$LOGPATH/mcc_subnet"
+  echo "Gathering MCC subnet details..."
+  echo "################# [MCC SUBNET DETAILS] #################" >"$OUT"
+  grep ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/ipam.mirantis.com/subnets/ $LOGPATH/files >$LOGPATH/mcc-subnet
+  echo "" >>"$OUT"
+  printf '## Subnets' >>"$OUT"
+  printf " (Total: $(wc -l <$LOGPATH/mcc-subnet))" >>"$OUT"
+  echo "" >>"$OUT"
+  while read -r line; do
+    printf "# "
+    printf "$line" | awk -F "/" -v 'OFS=/' '{print $8}' | sed 's|\.yaml||g'
+  done <$LOGPATH/mcc-subnet >>"$OUT"
+  echo "" >>"$OUT"
+  while read -r line; do
+    printf "# $line:"
+    echo ""
+    sed -n '/  status:/,/    tokenSecret:/p' $line
+    echo ""
+  done <$LOGPATH/mcc-subnet >>"$OUT"
+  echo "" >>"$OUT"
 fi
 
 if [[ -n "$MCCNAME" ]]; then
@@ -729,6 +726,42 @@ if [[ -n "$MCCNAME" ]]; then
     echo ""
   done <$LOGPATH/mos-subnet >>"$OUT"
   echo "" >>"$OUT"
+fi
+
+# --- MOS NETWORKING (Subnets & IPPools) ---
+if [[ -n "$MOSNAME" ]]; then
+  OUT="$LOGPATH/mos_networking_audit"
+  echo "Gathering MOS Networking details..."
+  echo "################# [MOS SUBNET & IPPOOL RESUME] #################" > "$OUT"
+
+  # 1. Audit Subnets
+  echo "## IPAM SUBNETS (Ranges Resume):" >> "$OUT"
+  grep "$MOSNAME" "$LOGPATH/files" | grep "ipam.mirantis.com/subnets/" | while read -r f; do
+    if [[ -f "$f" ]]; then
+      PREFIX=$(yq eval 'has("Object")' "$f" 2>/dev/null | grep -q "true" && echo ".Object" || echo "")
+      NAME=$(yq eval "${PREFIX}.metadata.name" "$f" 2>/dev/null)
+      CIDR=$(yq eval "${PREFIX}.spec.cidr" "$f" 2>/dev/null)
+      INC=$(yq eval "${PREFIX}.spec.includeRanges[]" "$f" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+      EXC=$(yq eval "${PREFIX}.spec.excludeRanges[]" "$f" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+      
+      echo "----------------------------------------------------" >> "$OUT"
+      printf "Subnet:  %s\n" "$NAME" >> "$OUT"
+      printf "CIDR:    %s\n" "$CIDR" >> "$OUT"
+      printf "Include: [%s]\n" "${INC:-None}" >> "$OUT"
+      printf "Exclude: [%s]\n" "${EXC:-None}" >> "$OUT"
+    fi
+  done
+
+  # 2. Audit IPAddressPools (MetalLB)
+  echo -e "\n## METALLB IP POOLS:" >> "$OUT"
+  grep "$MOSNAME" "$LOGPATH/files" | grep "ipaddresspools/" | while read -r f; do
+    if [[ -f "$f" ]]; then
+      PREFIX=$(yq eval 'has("Object")' "$f" 2>/dev/null | grep -q "true" && echo ".Object" || echo "")
+      NAME=$(yq eval "${PREFIX}.metadata.name" "$f" 2>/dev/null)
+      ADDR=$(yq eval "${PREFIX}.spec.addresses[]" "$f" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+      printf "Pool: %-20s | Ranges: [%s]\n" "$NAME" "$ADDR" >> "$OUT"
+    fi
+  done
 fi
 
 if [[ -n "$MOSNAME" ]] && [[ -d $MOSNAME/objects/namespaced/tf ]]; then
@@ -806,7 +839,6 @@ if [[ -n "$MOSNAME" ]] && [[ -d $MOSNAME/objects/namespaced/tf ]]; then
   done <$LOGPATH/mos-tf-rabbitmq >>"$OUT"
   echo "" >>"$OUT"
 fi
-
 if [[ -n "$MOSNAME" ]]; then
   OUT="$LOGPATH/mos_pv_pvc"
   echo "Gathering MOS PV and PVC details..."
@@ -844,28 +876,23 @@ if [[ -n "$MOSNAME" ]]; then
     echo ""
   done <$LOGPATH/mos-pvc >>"$OUT"
 fi
-
 # MCC Analysis
 if [[ -n "$MCCNAME" ]]; then
   OUT="$LOGPATH/mcc_cluster"
   echo "Gathering MCC cluster details..."
   echo "################# [MCC CLUSTER DETAILS] #################" >"$OUT"
   MCC_YAML="./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml"
-
   if [[ -f "$MCC_YAML" ]]; then
     K_RAW=$(grep -m1 "release: kaas-" "$MCC_YAML" | sed -e 's/.*kaas-//' -e 's/[[:space:]]//g' -e 's/-/./g')
     IFS='.' read -r -a M <<<"$K_RAW"
-
     printf "## MCC Version release details: ${M[0]}.${M[1]}.${M[2]}" >>"$OUT"
     echo "" >>"$OUT"
     echo "https://docs.mirantis.com/container-cloud/latest/release-notes/releases/${M[0]}-${M[1]}-${M[2]}.html" >>"$OUT"
     echo "https://docs.mirantis.com/container-cloud/latest/release-notes/releases/${M[0]}-${M[1]}-${M[2]}/known-${M[0]}-${M[1]}-${M[2]}.html" >>"$OUT"
-
     MCC_BUG_VER="${M[0]}.${M[1]}.${M[2]}"
     echo "" >>"$OUT"
     printf "## MCC Bugs - $MCC_BUG_VER:" >>"$OUT"
     echo "" >>"$OUT"
-
     # Jira (MCC)
     [[ "$MCC_BUG_VER" == "2.23.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.2%20%2F%20MOSK%2023.1.1%20%28Patch%20release%29%22" >>"$OUT"
     [[ "$MCC_BUG_VER" == "2.23.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.3%20%2F%20MOSK%2023.1.2%20%28Patch%20release%29%22" >>"$OUT"
@@ -893,7 +920,7 @@ if [[ -n "$MCCNAME" ]]; then
     [[ "$MCC_BUG_VER" == "2.28" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.28%20%2F%20MOSK%2024.3%22" >>"$OUT"
     [[ "$MCC_BUG_VER" == "2.28.1" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.1%20%2F%20MOSK%2024.2.3%20%28Patch%20release3%29%22" >>"$OUT"
     [[ "$MCC_BUG_VER" == "2.28.2" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.2%20%2F%20MOSK%2024.2.4%20%28Patch%20release4%29%22" >>"$OUT"
-    [[ "$MCC_BUG_VER" == "2.28.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.3%20%2F%20MOSK%2024.2.5%20%28Patch%20release5%29%22" >>"$OUT"
+    [[ "$MCC_BUG_VER" == "2.28.3" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.3%20%2F%20MOSK%2024.2.5%20(Patch%20release5)%22" >>"$OUT"
     [[ "$MCC_BUG_VER" == "2.28.4" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.4%20%2F%20MOSK%2024.3.1%20%28Patch%20release1%29%22" >>"$OUT"
     [[ "$MCC_BUG_VER" == "2.28.5" ]] && echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.5%20%2F%20MOSK%2024.3.2%20%28Patch%20release2%29%22" >>"$OUT"
     [[ "$MCC_BUG_VER" == "2.29" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.29%20%2F%20MOSK%2025.1%22" >>"$OUT"
@@ -913,7 +940,6 @@ if [[ -n "$MCCNAME" ]]; then
     [[ "$MCC_BUG_VER" == "2.31.2" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.2%20%2F%20MOSK%2025.2.7%20(Patch%20release7)%22" >>"$OUT"
     [[ "$MCC_BUG_VER" == "2.31.3" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.3%20%2F%20MOSK%2025.2.8%20(Patch%20release8)%22" >>"$OUT"
     [[ "$MCC_BUG_VER" == "2.31.4" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.4%20%2F%20MOSK%2025.2.9%20(Patch%20release9)%22" >>"$OUT"
-
     # Improved MKE Extraction
     MKE_RAW=$(grep -m1 "release: mke-" "$MCC_YAML" | sed -e 's/.*mke-//' -e 's/[[:space:]]//g' -e 's/-/./g')
     IFS='.' read -r -a E <<<"$MKE_RAW"
@@ -925,7 +951,6 @@ if [[ -n "$MCCNAME" ]]; then
     echo "" >>"$OUT"
     echo "https://docs.mirantis.com/mke/$MKE_SHORT/release-notes/$MKE_FULL.html" >>"$OUT"
     echo "https://docs.mirantis.com/mke/$MKE_SHORT/release-notes/$MKE_FULL/known-issues.html" >>"$OUT"
-
     echo "" >>"$OUT"
     echo "## Details and versions:" >>"$OUT"
     printf '# ' >>"$OUT"
@@ -933,7 +958,6 @@ if [[ -n "$MCCNAME" ]]; then
     grep -E "release: kaas-|release: mke-|      - message" "$MCC_YAML" >>"$OUT"
     sed -n '/          stacklight:/,/      kind:/p' "$MCC_YAML" >>"$OUT"
     echo "" >>"$OUT"
-
     echo "## LCM status:" >>"$OUT"
     printf '# ' >>"$OUT"
     LCM_MCC="./$MCCNAME/objects/namespaced/$MCCNAMESPACE/lcm.mirantis.com/lcmclusters/$MCCNAME.yaml"
@@ -949,17 +973,14 @@ if [[ -n "$MCCNAME" ]]; then
       # We use sed to grab the block for the specific type, then find the status within it
       READY=$(grep -B 5 'type: Ready' "$nf" | grep "status:" | head -n 1 | awk '{print $NF}' | tr -d '", ')
       DISK=$(grep -B 5 'type: DiskPressure' "$nf" | grep "status" | head -n 1 | awk '{print $NF}' | tr -d '", ')
-
       # Default to Unknown if extraction failed
       [[ -z "$READY" ]] && READY="Unknown"
       [[ -z "$DISK" ]] && DISK="Unknown"
-
       printf "Node: %-50s | Ready: %-8s | DiskPressure: %-8s\n" "$N_NAME" "$READY" "$DISK" >>"$OUT"
     done
   #add_to_html "MCC Cluster Details" "$(cat "$OUT")"
   fi
 fi
-
 if [[ -n "$MCCNAME" ]]; then
   OUT="$LOGPATH/mcc_events"
   echo "Gathering MCC events..."
@@ -970,7 +991,6 @@ if [[ -n "$MCCNAME" ]]; then
   ls ./$MCCNAME/objects/events.log >>"$OUT"
   grep -E "Warning|Error" ./$MCCNAME/objects/events.log | sort -M >>"$OUT"
 fi
-
 if [[ -n "$MCCNAME" ]]; then
   OUT="$LOGPATH/mcc_nodes"
   echo "Gathering MCC node details..."
@@ -993,7 +1013,6 @@ if [[ -n "$MCCNAME" ]]; then
     sed -n '/    conditions:/,/    daemonEndpoints:/p' $line | head -n -1
   done <$LOGPATH/mcc-nodes >>"$OUT"
 fi
-
 if [[ -n "$MCCNAME" ]]; then
   OUT="$LOGPATH/mcc_lcmmachine"
   echo "Gathering MCC LCM machine details..."
@@ -1016,7 +1035,28 @@ if [[ -n "$MCCNAME" ]]; then
   done <$LOGPATH/mcc-lcmmachine >>"$OUT"
   echo "" >>"$OUT"
 fi
-
+if [[ -n "$MCCNAME" ]]; then
+  OUT="$LOGPATH/mcc_machine"
+  echo "Gathering MCC machine details..."
+  echo "################# [MCC MACHINE DETAILS] #################" >"$OUT"
+  grep ./$MCCNAME/objects/namespaced/default/cluster.k8s.io/machines $LOGPATH/files >$LOGPATH/mcc-machine
+  echo "" >>"$OUT"
+  printf '## Machines' >>"$OUT"
+  printf " (Total: $(wc -l <$LOGPATH/mcc-machine))" >>"$OUT"
+  echo "" >>"$OUT"
+  while read -r line; do
+    printf "# "
+    printf "$line" | awk -F "/" -v 'OFS=/' '{print $8}' | sed 's|\.yaml||g'
+  done <$LOGPATH/mcc-machine >>"$OUT"
+  echo "" >>"$OUT"
+  while read -r line; do
+    printf "# $line:"
+    echo ""
+    sed -n '/  status:/,/    tokenSecret:/p' $line
+    echo ""
+  done <$LOGPATH/mcc-machine >>"$OUT"
+  echo "" >>"$OUT"
+fi
 if [[ -n "$MCCNAME" ]]; then
   OUT="$LOGPATH/mcc_mariadb"
   echo "Gathering MCC Mariadb details and logs..."
@@ -1035,46 +1075,84 @@ if [[ -n "$MCCNAME" ]]; then
   echo "## Logs from server-0 pods (Errors/Warnings):" >>"$OUT"
   printf '# ' >>"$OUT"
   ls ./$MCCNAME/objects/namespaced/kaas/core/pods/mariadb-server-0/mariadb.log >>"$OUT"
-  grep -E 'ERR|WARN' ./$MCCNAME/objects/namespaced/kaas/core/pods/mariadb-server-0/mariadb.log | sed -r '/^\s*$/d' >>"$OUT"
+  awk '/ERR|WARN/ && !/WARNING - Collision writing configmap/ && NF' "./$MCCNAME/objects/namespaced/kaas/core/pods/mariadb-server-0/mariadb.log" >> "$OUT"
   echo "" >>"$OUT"
   echo "## Logs from server-1 pods (Errors/Warnings):" >>"$OUT"
   printf '# ' >>"$OUT"
   ls ./$MCCNAME/objects/namespaced/kaas/core/pods/mariadb-server-1/mariadb.log >>"$OUT"
-  grep -E 'ERR|WARN' ./$MCCNAME/objects/namespaced/kaas/core/pods/mariadb-server-1/mariadb.log | sed -r '/^\s*$/d' >>"$OUT"
+  awk '/ERR|WARN/ && !/WARNING - Collision writing configmap/ && NF' "./$MCCNAME/objects/namespaced/kaas/core/pods/mariadb-server-0/mariadb.log" >> "$OUT"
   echo "" >>"$OUT"
   echo "## Logs from server-2 pods (Errors/Warnings):" >>"$OUT"
   printf '# ' >>"$OUT"
   ls ./$MCCNAME/objects/namespaced/kaas/core/pods/mariadb-server-2/mariadb.log >>"$OUT"
-  grep -E 'ERR|WARN' ./$MCCNAME/objects/namespaced/kaas/core/pods/mariadb-server-2/mariadb.log | sed -r '/^\s*$/d' >>"$OUT"
+  awk '/ERR|WARN/ && !/WARNING - Collision writing configmap/ && NF' "./$MCCNAME/objects/namespaced/kaas/core/pods/mariadb-server-0/mariadb.log" >> "$OUT"
 fi
-
+# --- MCC CERTIFICATE AUTO-SCAN ---
 if [[ -n "$MCCNAME" ]]; then
   OUT="$LOGPATH/mcc_certs"
-  echo "Gathering MCC certificates..."
-  echo "################# [MCC CERTIFICATE DETAILS] #################" >"$OUT"
-  echo "" >>"$OUT"
-  echo "## UI certificates:" >>"$OUT"
-  printf '# ' >>"$OUT"
-  ls ./$MCCNAME/objects/namespaced/kaas/core/secrets/ui-tls-certs.yaml >>"$OUT"
-  audit_k8s_secret "./$MCCNAME/objects/namespaced/kaas/core/secrets/ui-tls-certs.yaml" >>"$OUT"
-  printf '# ' >>"$OUT"
-  ls ./$MCCNAME/objects/namespaced/kaas/core/secrets/mcc-ca-cert.yaml >>"$OUT"
-  audit_k8s_secret "./$MCCNAME/objects/namespaced/kaas/core/secrets/mcc-ca-cert.yaml" >>"$OUT"
-  echo "" >>"$OUT"
-  echo "## Keycloak certificates:" >>"$OUT"
-  printf '# ' >>"$OUT"
-  ls ./$MCCNAME/objects/namespaced/kaas/core/secrets/keycloak-tls-certs.yaml >>"$OUT"
-  audit_k8s_secret "./$MCCNAME/objects/namespaced/kaas/core/secrets/keycloak-tls-certs.yaml" >>"$OUT"
-  echo "## OIDC certificates:" >>"$OUT"
-  printf '# ' >>"$OUT"
-  ls ./$MCCNAME/objects/namespaced/kaas/core/secrets/oidc-ca-cert.yaml >>"$OUT"
-  audit_k8s_secret "./$MCCNAME/objects/namespaced/kaas/core/secrets/oidc-ca-cert.yaml" >>"$OUT"
-  echo "## Policy controller certificates:" >>"$OUT"
-  printf '# ' >>"$OUT"
-  ls ./$MCCNAME/objects/namespaced/kaas/core/secrets/policy-tls-certs.yaml >>"$OUT"
-  audit_k8s_secret "./$MCCNAME/objects/namespaced/kaas/core/secrets/policy-tls-certs.yaml" >>"$OUT"
+  echo "Scanning MCC Secrets for PEM data..."
+  echo "################# [MCC CERTIFICATE & KEY] #################" >"$OUT"
+  find "./$MCCNAME" -path "*/core/secrets/*.yaml" -type f | while read -r secret_file; do
+    DATA_EXPR='(.Object.data // .data // .Object.stringData // .stringData)'
+    KEYS=$(yq eval "$DATA_EXPR | keys | .[]" "$secret_file" 2>/dev/null)
+    FOUND_IN_FILE=false
+    FILE_ALERTS=""
+    for KEY in $KEYS; do
+      VAL=$(yq eval "$DATA_EXPR.\"$KEY\"" "$secret_file" 2>/dev/null)
+      [[ -z "$VAL" ]] && continue
+      RAW_PEM=$( (echo "$VAL" | base64 -d 2>/dev/null; echo "$VAL") | grep -iE "BEGIN CERTIFICATE|BEGIN PRIVATE KEY")
+      if [[ -n "$RAW_PEM" ]]; then
+        FOUND_IN_FILE=true
+        # Check for Self-Signed or Expiry to flag it early
+        if [[ "$RAW_PEM" == *"BEGIN CERTIFICATE"* ]]; then
+            CERT_CONT=$(echo "$VAL" | base64 -d 2>/dev/null)
+            ISSUER=$(echo "$CERT_CONT" | openssl x509 -noout -issuer 2>/dev/null)
+            SUBJECT=$(echo "$CERT_CONT" | openssl x509 -noout -subject 2>/dev/null)
+            [[ "$ISSUER" == "$SUBJECT" ]] && FILE_ALERTS+=$'\n'"⚠️  ALERT: SELF-SIGNED detected in $KEY"
+        fi
+      fi
+    done
+    if [ "$FOUND_IN_FILE" = true ]; then
+      echo "----------------------------------------------------" >> "$OUT"
+      [[ -n "$FILE_ALERTS" ]] && echo "$FILE_ALERTS" >> "$OUT"
+      echo "## File: $secret_file" >> "$OUT"
+      audit_k8s_secret "$secret_file" >> "$OUT"
+    fi
+  done
 fi
-
+# --- MOS CERTIFICATE AUTO-SCAN ---
+if [[ -n "$MOSNAME" ]]; then
+  OUT="$LOGPATH/mos_certs"
+  echo "Scanning MOS Secrets for PEM data..."
+  echo "################# [MOS CERTIFICATE & KEY] #################" >"$OUT"
+  find "./$MOSNAME" -path "*/core/secrets/*.yaml" -type f | while read -r secret_file; do
+    DATA_EXPR='(.Object.data // .data // .Object.stringData // .stringData)'
+    KEYS=$(yq eval "$DATA_EXPR | keys | .[]" "$secret_file" 2>/dev/null)
+    FOUND_IN_FILE=false
+    FILE_ALERTS=""
+    for KEY in $KEYS; do
+      VAL=$(yq eval "$DATA_EXPR.\"$KEY\"" "$secret_file" 2>/dev/null)
+      [[ -z "$VAL" ]] && continue
+      RAW_PEM=$( (echo "$VAL" | base64 -d 2>/dev/null; echo "$VAL") | grep -iE "BEGIN CERTIFICATE|BEGIN PRIVATE KEY")
+      if [[ -n "$RAW_PEM" ]]; then
+        FOUND_IN_FILE=true
+        # Check for Self-Signed or Expiry to flag it early
+        if [[ "$RAW_PEM" == *"BEGIN CERTIFICATE"* ]]; then
+            CERT_CONT=$(echo "$VAL" | base64 -d 2>/dev/null)
+            ISSUER=$(echo "$CERT_CONT" | openssl x509 -noout -issuer 2>/dev/null)
+            SUBJECT=$(echo "$CERT_CONT" | openssl x509 -noout -subject 2>/dev/null)
+            [[ "$ISSUER" == "$SUBJECT" ]] && FILE_ALERTS+=$'\n'"⚠️  ALERT: SELF-SIGNED detected in $KEY"
+        fi
+      fi
+    done
+    if [ "$FOUND_IN_FILE" = true ]; then
+      echo "----------------------------------------------------" >> "$OUT"
+      [[ -n "$FILE_ALERTS" ]] && echo "$FILE_ALERTS" >> "$OUT"
+      echo "## File: $secret_file" >> "$OUT"
+      audit_k8s_secret "$secret_file" >> "$OUT"
+    fi
+  done
+fi
 if [[ -n "$MCCNAME" ]]; then
   OUT="$LOGPATH/mcc_ipamhost"
   echo "Gathering MCC Ipamhost details..."
@@ -1096,7 +1174,6 @@ if [[ -n "$MCCNAME" ]]; then
     echo ""
   done <$LOGPATH/mcc-ipamhost >>"$OUT"
 fi
-
 if [[ -n "$MCCNAME" ]]; then
   OUT="$LOGPATH/mcc_l2template"
   echo "Gathering MCC L2template details..."
@@ -1113,30 +1190,51 @@ if [[ -n "$MCCNAME" ]]; then
     echo ""
   done <$LOGPATH/mcc-l2template >>"$OUT"
 fi
-
+# --- MCC NETWORKING (Subnets & IPPools) ---
 if [[ -n "$MCCNAME" ]]; then
-  OUT="$LOGPATH/mcc_subnet"
-  echo "Gathering MCC subnet details..."
-  echo "################# [MCC SUBNET DETAILS] #################" >"$OUT"
-  grep ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/ipam.mirantis.com/subnets/ $LOGPATH/files >$LOGPATH/mcc-subnet
-  echo "" >>"$OUT"
-  printf '## Subnets' >>"$OUT"
-  printf " (Total: $(wc -l <$LOGPATH/mcc-subnet))" >>"$OUT"
-  echo "" >>"$OUT"
-  while read -r line; do
-    printf "# "
-    printf "$line" | awk -F "/" -v 'OFS=/' '{print $8}' | sed 's|\.yaml||g'
-  done <$LOGPATH/mcc-subnet >>"$OUT"
-  echo "" >>"$OUT"
-  while read -r line; do
-    printf "# $line:"
-    echo ""
-    sed -n '/  status:/,/    tokenSecret:/p' $line
-    echo ""
-  done <$LOGPATH/mcc-subnet >>"$OUT"
-  echo "" >>"$OUT"
+  OUT="$LOGPATH/mcc_networking_audit"
+  echo "Gathering MCC Networking details..."
+  echo "################# [MCC SUBNET & IPPOOL RESUME] #################" > "$OUT"
+
+  # 1. Audit Subnets
+  echo "## IPAM SUBNETS (Ranges Resume):" >> "$OUT"
+  grep "$MCCNAME" "$LOGPATH/files" | grep "ipam.mirantis.com/subnets/" | while read -r f; do
+    if [[ -f "$f" ]]; then
+      PREFIX=$(yq eval 'has("Object")' "$f" 2>/dev/null | grep -q "true" && echo ".Object" || echo "")
+      NAME=$(yq eval "${PREFIX}.metadata.name" "$f" 2>/dev/null)
+      CIDR=$(yq eval "${PREFIX}.spec.cidr" "$f" 2>/dev/null)
+      # Extract arrays and format as single line
+      INC=$(yq eval "${PREFIX}.spec.includeRanges[]" "$f" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+      EXC=$(yq eval "${PREFIX}.spec.excludeRanges[]" "$f" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+      
+      echo "----------------------------------------------------" >> "$OUT"
+      printf "Subnet:  %s\n" "$NAME" >> "$OUT"
+      printf "CIDR:    %s\n" "$CIDR" >> "$OUT"
+      printf "Include: [%s]\n" "${INC:-None}" >> "$OUT"
+      printf "Exclude: [%s]\n" "${EXC:-None}" >> "$OUT"
+    fi
+  done
+
+  # 2. Audit IPAddressPools (MetalLB)
+  echo -e "\n## METALLB IP POOLS:" >> "$OUT"
+  grep "$MCCNAME" "$LOGPATH/files" | grep "ipaddresspools/" | while read -r f; do
+    if [[ -f "$f" ]]; then
+      PREFIX=$(yq eval 'has("Object")' "$f" 2>/dev/null | grep -q "true" && echo ".Object" || echo "")
+      NAME=$(yq eval "${PREFIX}.metadata.name" "$f" 2>/dev/null)
+      ADDR=$(yq eval "${PREFIX}.spec.addresses[]" "$f" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+      printf "Pool: %-20s | Ranges: [%s]\n" "$NAME" "$ADDR" >> "$OUT"
+    fi
+  done
 fi
 
+OUT="$LOGPATH/cluster_webhooks"
+echo "Auditing Admission Webhooks..."
+echo "################# [MOS/MCC WEBHOOK CONFIGURATIONS] #################" > "$OUT"
+find . -path "./$LOGPATH" -prune -o -path "*/admissionregistration.k8s.io/*" -name "*.yaml" -print >> "$OUT"
+echo "" >>"$OUT"
+printf '## Failed calls:' >>"$OUT"
+echo "" >>"$OUT"
+grep -r --exclude-dir="$LOGPATH" "failed calling webhook" . >> "$OUT"
 if [[ -n "$MCCNAME" ]]; then
   OUT="$LOGPATH/mcc_pv_pvc"
   echo "Gathering MCC PV and PVC details..."
@@ -1174,32 +1272,26 @@ if [[ -n "$MCCNAME" ]]; then
     echo ""
   done <$LOGPATH/mcc-pvc >>"$OUT"
 fi
-
 # --- FINAL GENERATION BLOCK ---
 if [[ -n "$MCCNAME" ]] || [[ -n "$MOSNAME" ]]; then
   echo "Finalizing UI Styling..."
-
   # 1. & 2. Strict Normalization
   # Only process files that have an underscore (our intended output files)
   for f in "$LOGPATH"/*; do
     filename=$(basename "$f")
-
     # Skip the report and the index
     [[ "$filename" == *.html || "$filename" == "files" ]] && continue
-
     # If the file DOES NOT have an underscore, it's a temp file (like mcc-nodes)
     # We delete these to prevent duplicates
     if [[ "$filename" != *_* ]]; then
       rm "$f"
       continue
     fi
-
     # If it has an underscore but no extension, add .yaml
     if [[ "$filename" != *.yaml ]]; then
       mv "$f" "$f.yaml"
     fi
   done
-
   # 3. BUILD SIDEBAR LINKS
   for yaml_file in $(ls "$LOGPATH"/*_*.yaml 2>/dev/null | sort); do
     [[ -e "$yaml_file" ]] || continue
@@ -1209,25 +1301,25 @@ if [[ -n "$MCCNAME" ]] || [[ -n "$MOSNAME" ]]; then
     ANCHOR=$(echo "$TITLE" | tr ' ' '-')
     echo "<li><a href='#$ANCHOR'>$TITLE</a></li>" >>"$HTML_REPORT"
   done
-
   # 4. TRANSITION FROM SIDEBAR TO MAIN
   printf "\n</ul>\n</nav>\n<main class=\"main-content\">\n" >>"$HTML_REPORT"
-
   cat <<EOF >>"$HTML_REPORT"
 <button class="toggle-sidebar-btn" onclick="toggleSidebar()" title="Toggle Sidebar">◀</button>
-
 <div class="header">
     <h1>Mirantis Diagnostic Dashboard</h1>
-    <p>Cluster: <strong>${MOSNAME:-$MCCNAME}</strong> | Generated: $DATE</p>
+    <p>
+        <strong>Management (MCC):</strong> ${MCCNAME:-N/A} 
+        ${MOSNAME:+ | <strong>Managed (MOSK):</strong> $MOSNAME}
+        <br>
+        <small>Generated: $DATE</small>
+    </p>
 </div>
 EOF
-
   # 5. BUILD CONTENT CARDS
   for yaml_file in $(ls "$LOGPATH"/*_*.yaml 2>/dev/null | sort); do
     [[ -e "$yaml_file" ]] || continue
     TITLE=$(basename "$yaml_file" .yaml | tr '_' ' ' | tr '[:lower:]' '[:upper:]')
     ANCHOR=$(echo "$TITLE" | tr ' ' '-')
-
     {
       echo "<div class='card' id='$ANCHOR'>"
       echo "  <h2>$TITLE"
@@ -1238,25 +1330,21 @@ EOF
       echo "    </div>"
       echo "  </h2>"
       echo "  <pre class='language-yaml raw-code'><code>"
-
       # Simple, fast escaping of content
       sed 's/\xc2\xa0/ /g; s/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' "$yaml_file"
-
       echo "  </code></pre>"
       echo "</div>"
     } >>"$HTML_REPORT"
   done
-
 # 6. CLOSE DOCUMENT
     printf "\n</main>\n" >> "$HTML_REPORT"
     printf "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js\" data-manual></script>\n" >> "$HTML_REPORT"
     printf "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js\"></script>\n" >> "$HTML_REPORT"
     printf "</body>\n</html>" >> "$HTML_REPORT"
-
   echo "✅ Dashboard ready: $HTML_REPORT"
   xdg-open "$HTML_REPORT" 2>/dev/null || open "$HTML_REPORT" 2>/dev/null
 fi
 if [[ -z "$MCCNAME" ]] && [[ -z "$MOSNAME" ]]; then
   # Delete myrha folder as neither MCC and MOS clusters were found:
-  rm -rf $LOGPATH 2>/dev/null
+  rm -rf $LOGPATH 2>/dev/null 
 fi
