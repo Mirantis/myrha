@@ -55,7 +55,12 @@ cat <<EOF >"$HTML_REPORT"
     }
     .sidebar a:hover { background: rgba(255, 255, 255, 0.1); color: var(--sidebar-hover); padding-left: 15px; }
     .sidebar li.hidden { display: none; }
-    .main-content { flex: 1; padding: 40px; box-sizing: border-box; overflow-x: hidden; transition: width 0.3s; }
+    .sidebar a.active { background: var(--accent); color: white; font-weight: bold; }
+    .main-content { flex: 1; padding: 40px; box-sizing: border-box; overflow-x: hidden; transition: width 0.3s; position: relative; }
+    .placeholder-msg { 
+        text-align: center; margin-top: 100px; color: #666; font-size: 1.2rem; 
+        padding: 40px; border: 2px dashed #ccc; border-radius: 12px;
+    }
     .header { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 30px; border-left: 8px solid var(--accent); position: relative; }
     .toggle-sidebar-btn { 
         position: fixed; left: 275px; top: 20px; 
@@ -68,6 +73,7 @@ cat <<EOF >"$HTML_REPORT"
     body.sidebar-hidden .toggle-sidebar-btn { left: 15px; transform: rotate(180deg); }
     /* Card Styling */
     .card { 
+        display: none; /* Hidden by default */
         background: white; 
         border-radius: 12px; 
         padding: 25px; 
@@ -76,6 +82,7 @@ cat <<EOF >"$HTML_REPORT"
         min-height: 200px; 
         border-left: 5px solid transparent; 
     }
+    .card.visible { display: block; }
     /* Alert Card Highlight - Targets the summary card specifically */
     .card[id*="CERTIFICATE-ALERTS"] { border-left: 8px solid var(--danger); background: #fffcfc; }
     .card[id*="CERTIFICATE-ALERTS"] h2 { color: var(--danger); }
@@ -145,21 +152,24 @@ cat <<EOF >"$HTML_REPORT"
             item.classList.toggle('hidden', !matchesSearch || !matchesFilter);
         });
     }
-    // Initialize Prism Highlighting only when card is visible (Lazy Load)
-    const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                const codeBlock = entry.target.querySelector('pre code');
-                if (codeBlock && !entry.target.dataset.highlighted) {
-                    Prism.highlightElement(codeBlock);
-                    entry.target.dataset.highlighted = "true";
-                }
+    function toggleCard(link, anchor) {
+        const card = document.getElementById(anchor);
+        const isActive = link.classList.toggle('active');
+        card.classList.toggle('visible', isActive);
+        
+        // Lazy load highlighting
+        if (isActive && !card.dataset.highlighted) {
+            const codeBlock = card.querySelector('pre code');
+            if (codeBlock) {
+                Prism.highlightElement(codeBlock);
+                card.dataset.highlighted = "true";
             }
-        });
-    }, { threshold: 0.1 });
-    window.onload = () => {
-        document.querySelectorAll('.card').forEach(card => observer.observe(card));
-    };
+        }
+        
+        const placeholder = document.getElementById('placeholder');
+        const visibleCards = document.querySelectorAll('.card.visible').length;
+        placeholder.style.display = visibleCards > 0 ? 'none' : 'block';
+    }
     function toggleBlockWrap(btn, anchor) {
         const card = document.getElementById(anchor);
         const codeBlock = card.querySelector('pre');
@@ -1530,6 +1540,7 @@ echo "################# [LICENSE & RELEASE DETAILS] #################" >"$OUT"
 LICENSE_FILE=$(find "$BASE_DIR/kaas-mgmt" -name "license.yaml" 2>/dev/null)
 if [[ -f "$LICENSE_FILE" ]]; then
   echo "## License Status:" >>"$OUT"
+  echo "# $LICENSE_FILE:" >>"$OUT"
   yq eval '.Object.status // .status' "$LICENSE_FILE" 2>/dev/null >>"$OUT"
 fi
 echo -e "\n## Available KaasReleases:" >>"$OUT"
@@ -1543,12 +1554,35 @@ if [[ -n "$MCC_DIR" ]]; then
   
   # 1. Current Cluster Release Status
   echo "## Current Release Health:" >>"$OUT"
-  # Find the Cluster object to get current version
-  CUR_VER=$(yq eval '.Object.spec.release // .spec.release' "$MCC_DIR/objects/namespaced/default/cluster.k8s.io/clusters/$MCCNAME.yaml" 2>/dev/null)
-  REL_FILE=$(find "$MCC_DIR" -path "*/clusterreleases/$CUR_VER.yaml" 2>/dev/null | head -n 1)
-  if [[ -f "$REL_FILE" ]]; then
-    echo "Current Version: $CUR_VER" >>"$OUT"
-    yq eval '.Object.status // .status' "$REL_FILE" 2>/dev/null >>"$OUT"
+  # Find the Cluster object for management cluster (default/kaas-mgmt or first one)
+  CLUSTER_FILE=$(find "$MCC_DIR" -path "*/default/cluster.k8s.io/clusters/*.yaml" | head -n 1)
+  [[ -z "$CLUSTER_FILE" ]] && CLUSTER_FILE=$(find "$MCC_DIR" -path "*/clusters/*.yaml" | head -n 1)
+  
+  if [[ -f "$CLUSTER_FILE" ]]; then
+    echo "# $CLUSTER_FILE:" >>"$OUT"
+    CUR_VER=$(yq eval '.Object.spec.providerSpec.value.kaas.release // .spec.providerSpec.value.kaas.release' "$CLUSTER_FILE" 2>/dev/null)
+    MKE_VER=$(yq eval '.Object.spec.providerSpec.value.release // .spec.providerSpec.value.release' "$CLUSTER_FILE" 2>/dev/null)
+    
+    echo "KaaS Release: ${CUR_VER:-N/A}" >>"$OUT"
+    echo "MKE Release: ${MKE_VER:-N/A}" >>"$OUT"
+
+    echo -e "\n### Cluster Release Status:" >>"$OUT"
+    yq eval '.Object.status.providerStatus.releaseRefs // .status.providerStatus.releaseRefs' "$CLUSTER_FILE" 2>/dev/null >>"$OUT"
+    
+    echo -e "\n### Cluster Health Conditions:" >>"$OUT"
+    yq eval '.Object.status.providerStatus.conditions // .status.providerStatus.conditions' "$CLUSTER_FILE" 2>/dev/null >>"$OUT"
+
+    # Check for the actual release files
+    if [[ -n "$CUR_VER" && "$CUR_VER" != "null" ]]; then
+       KREL_FILE=$(find "$MCC_DIR" -path "*/kaasreleases/$CUR_VER.yaml" 2>/dev/null | head -n 1)
+       if [[ -f "$KREL_FILE" ]]; then
+         echo -e "\n# $KREL_FILE:" >>"$OUT"
+         echo "KaaS Release Details (Spec):" >>"$OUT"
+         yq eval '.Object.spec // .spec' "$KREL_FILE" 2>/dev/null >>"$OUT"
+       fi
+    fi
+  else
+    echo "Management Cluster object not found." >>"$OUT"
   fi
 
   # 2. Upgrade History & Active Status
@@ -1556,18 +1590,19 @@ if [[ -n "$MCC_DIR" ]]; then
   UPGRADE_FILES=$(find "$MCC_DIR" -path "*/mccupgrades/*.yaml" 2>/dev/null | sort -r)
   if [[ -n "$UPGRADE_FILES" ]]; then
     for f in $UPGRADE_FILES; do
+      echo "# $f:" >>"$OUT"
       NAME=$(basename "$f" .yaml)
-      PHASE=$(yq eval '.Object.status.phase // .status.phase' "$f" 2>/dev/null)
-      START=$(yq eval '.Object.status.startTime // .status.startTime' "$f" 2>/dev/null)
-      END=$(yq eval '.Object.status.completionTime // .status.completionTime' "$f" 2>/dev/null)
+      PHASE=$(yq eval '.Object.status.phase // .status.phase // .Object.status.conditions[0].reason // .status.conditions[0].reason' "$f" 2>/dev/null)
+      START=$(yq eval '.Object.status.startTime // .status.startTime // .Object.status.lastUpgrade.startedAt // .status.lastUpgrade.startedAt' "$f" 2>/dev/null)
+      END=$(yq eval '.Object.status.completionTime // .status.completionTime // .Object.status.lastUpgrade.finishedAt // .status.lastUpgrade.finishedAt' "$f" 2>/dev/null)
       
       echo "----------------------------------------------------" >>"$OUT"
-      printf "Upgrade: %-30s | Phase: %-12s\n" "$NAME" "$PHASE" >>"$OUT"
+      printf "Upgrade: %-30s | Phase: %-12s\n" "$NAME" "${PHASE:-N/A}" >>"$OUT"
       printf "Started: %-30s | Ended: %-12s\n" "${START:-N/A}" "${END:-N/A}" >>"$OUT"
       
       # If not finished, show the detailed status of current components
       if [[ "$PHASE" != "Done" && "$PHASE" != "Success" ]]; then
-        echo ">>> ACTIVE/FAILED UPGRADE DETAILS:" >>"$OUT"
+        echo ">>> ACTIVE/FAILED/PENDING UPGRADE DETAILS:" >>"$OUT"
         yq eval '.Object.status // .status' "$f" 2>/dev/null >>"$OUT"
       fi
     done
@@ -1585,6 +1620,7 @@ if [[ -n "$MCC_DIR" ]]; then
   if [[ -n "$HOSTOS_FILES" ]]; then
     for f in $HOSTOS_FILES; do
       echo "----------------------------------------------------" >>"$OUT"
+      echo "# $f:" >>"$OUT"
       echo "### Module: $(basename "$f" .yaml)" >>"$OUT"
       yq eval '.Object.status // .status' "$f" 2>/dev/null >>"$OUT"
     done
@@ -1695,7 +1731,7 @@ if [[ -n "$MCCNAME" ]] || [[ -n "$MOSNAME" ]]; then
     [[ "$FILENAME" == mos_* ]] && CATEGORY="mos"
     TITLE=$(basename "$yaml_file" .yaml | tr '_' ' ' | tr '[:lower:]' '[:upper:]')
     ANCHOR=$(echo "$TITLE" | tr ' ' '-')
-    echo "<li data-category='$CATEGORY'><a href='#$ANCHOR'>$TITLE</a></li>" >>"$HTML_REPORT"
+    echo "<li data-category='$CATEGORY'><a href='javascript:void(0)' onclick=\"toggleCard(this, '$ANCHOR')\">$TITLE</a></li>" >>"$HTML_REPORT"
   done
 
   # 4. TRANSITION FROM SIDEBAR TO MAIN
@@ -1710,6 +1746,10 @@ if [[ -n "$MCCNAME" ]] || [[ -n "$MOSNAME" ]]; then
         <br>
         <small>Generated: $DATE</small>
     </p>
+</div>
+<div id="placeholder" class="placeholder-msg">
+    <h2>Welcome to the Mirantis Audit Report</h2>
+    <p>Please select the fields you would like to analyze from the sidebar on the left.</p>
 </div>
 EOF
 
