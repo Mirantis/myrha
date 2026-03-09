@@ -75,8 +75,6 @@ cat <<EOF >"$HTML_REPORT"
         box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); 
         min-height: 200px; 
         border-left: 5px solid transparent; 
-        content-visibility: auto;
-        contain-intrinsic-size: 1px 500px;
     }
     /* Alert Card Highlight - Targets the summary card specifically */
     .card[id*="CERTIFICATE-ALERTS"] { border-left: 8px solid var(--danger); background: #fffcfc; }
@@ -1537,20 +1535,44 @@ fi
 echo -e "\n## Available KaasReleases:" >>"$OUT"
 ls "$BASE_DIR/kaas-mgmt/objects/cluster/kaas.mirantis.com/kaasreleases/" 2>/dev/null | sed 's/.yaml//' >>"$OUT"
 
-# --- MCC UPGRADE HISTORY ---
+# --- MCC UPGRADE & RELEASE AUDIT ---
 if [[ -n "$MCC_DIR" ]]; then
-  OUT="$LOGPATH/mcc_upgrades"
-  echo "Gathering MCC Upgrade history..."
-  echo "################# [MCC UPGRADE HISTORY] #################" >"$OUT"
-  UPGRADE_FILES=$(find "$MCC_DIR" -path "*/mccupgrades/*.yaml" 2>/dev/null)
+  OUT="$LOGPATH/mcc_upgrade_audit"
+  echo "Auditing MCC Upgrade and Release status..."
+  echo "################# [MCC UPGRADE & RELEASE AUDIT] #################" >"$OUT"
+  
+  # 1. Current Cluster Release Status
+  echo "## Current Release Health:" >>"$OUT"
+  # Find the Cluster object to get current version
+  CUR_VER=$(yq eval '.Object.spec.release // .spec.release' "$MCC_DIR/objects/namespaced/default/cluster.k8s.io/clusters/$MCCNAME.yaml" 2>/dev/null)
+  REL_FILE=$(find "$MCC_DIR" -path "*/clusterreleases/$CUR_VER.yaml" 2>/dev/null | head -n 1)
+  if [[ -f "$REL_FILE" ]]; then
+    echo "Current Version: $CUR_VER" >>"$OUT"
+    yq eval '.Object.status // .status' "$REL_FILE" 2>/dev/null >>"$OUT"
+  fi
+
+  # 2. Upgrade History & Active Status
+  echo -e "\n## Upgrade Attempts (History):" >>"$OUT"
+  UPGRADE_FILES=$(find "$MCC_DIR" -path "*/mccupgrades/*.yaml" 2>/dev/null | sort -r)
   if [[ -n "$UPGRADE_FILES" ]]; then
     for f in $UPGRADE_FILES; do
+      NAME=$(basename "$f" .yaml)
+      PHASE=$(yq eval '.Object.status.phase // .status.phase' "$f" 2>/dev/null)
+      START=$(yq eval '.Object.status.startTime // .status.startTime' "$f" 2>/dev/null)
+      END=$(yq eval '.Object.status.completionTime // .status.completionTime' "$f" 2>/dev/null)
+      
       echo "----------------------------------------------------" >>"$OUT"
-      echo "### Upgrade: $(basename "$f" .yaml)" >>"$OUT"
-      yq eval '.Object.status // .status' "$f" 2>/dev/null >>"$OUT"
+      printf "Upgrade: %-30s | Phase: %-12s\n" "$NAME" "$PHASE" >>"$OUT"
+      printf "Started: %-30s | Ended: %-12s\n" "${START:-N/A}" "${END:-N/A}" >>"$OUT"
+      
+      # If not finished, show the detailed status of current components
+      if [[ "$PHASE" != "Done" && "$PHASE" != "Success" ]]; then
+        echo ">>> ACTIVE/FAILED UPGRADE DETAILS:" >>"$OUT"
+        yq eval '.Object.status // .status' "$f" 2>/dev/null >>"$OUT"
+      fi
     done
   else
-    echo "No MCCUpgrade objects found." >>"$OUT"
+    echo "No MCCUpgrade history found." >>"$OUT"
   fi
 fi
 
@@ -1655,24 +1677,15 @@ fi
 
 # --- FINAL GENERATION BLOCK ---
 if [[ -n "$MCCNAME" ]] || [[ -n "$MOSNAME" ]]; then
-  echo "Finalizing UI Styling..."
+  echo "Finalizing Dashboard UI..."
   # 1. & 2. Strict Normalization
-  # Only process files that have an underscore (our intended output files)
   for f in "$LOGPATH"/*; do
     filename=$(basename "$f")
-    # Skip the report and the index
     [[ "$filename" == *.html || "$filename" == "files" ]] && continue
-    # If the file DOES NOT have an underscore, it's a temp file (like mcc-nodes)
-    # We delete these to prevent duplicates
-    if [[ "$filename" != *_* ]]; then
-      rm "$f"
-      continue
-    fi
-    # If it has an underscore but no extension, add .yaml
-    if [[ "$filename" != *.yaml ]]; then
-      mv "$f" "$f.yaml"
-    fi
+    if [[ "$filename" != *_* ]]; then rm "$f"; continue; fi
+    [[ "$filename" != *.yaml ]] && mv "$f" "$f.yaml"
   done
+
   # 3. BUILD SIDEBAR LINKS
   for yaml_file in $(ls "$LOGPATH"/*_*.yaml 2>/dev/null | sort); do
     [[ -e "$yaml_file" ]] || continue
@@ -1680,12 +1693,11 @@ if [[ -n "$MCCNAME" ]] || [[ -n "$MOSNAME" ]]; then
     CATEGORY="cluster"
     [[ "$FILENAME" == mcc_* ]] && CATEGORY="mcc"
     [[ "$FILENAME" == mos_* ]] && CATEGORY="mos"
-    # Normalize Title: remove path, remove .yaml, underscores to spaces, uppercase
     TITLE=$(basename "$yaml_file" .yaml | tr '_' ' ' | tr '[:lower:]' '[:upper:]')
-    # Create Anchor: spaces to dashes
     ANCHOR=$(echo "$TITLE" | tr ' ' '-')
     echo "<li data-category='$CATEGORY'><a href='#$ANCHOR'>$TITLE</a></li>" >>"$HTML_REPORT"
   done
+
   # 4. TRANSITION FROM SIDEBAR TO MAIN
   printf "\n</ul>\n</nav>\n<main class=\"main-content\">\n" >>"$HTML_REPORT"
   cat <<EOF >>"$HTML_REPORT"
@@ -1700,6 +1712,7 @@ if [[ -n "$MCCNAME" ]] || [[ -n "$MOSNAME" ]]; then
     </p>
 </div>
 EOF
+
   # 5. BUILD CONTENT CARDS
   for yaml_file in $(ls "$LOGPATH"/*_*.yaml 2>/dev/null | sort); do
     [[ -e "$yaml_file" ]] || continue
@@ -1716,12 +1729,12 @@ EOF
       echo "    </div>"
       echo "  </h2>"
       echo "  <pre class='language-yaml raw-code'><code>"
-      # Simple, fast escaping of content
       sed 's/\xc2\xa0/ /g; s/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' "$yaml_file"
       echo "  </code></pre>"
       echo "</div>"
     } >>"$HTML_REPORT"
   done
+
   # 6. CLOSE DOCUMENT
   printf "\n</main>\n" >>"$HTML_REPORT"
   printf "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js\" data-manual></script>\n" >>"$HTML_REPORT"
