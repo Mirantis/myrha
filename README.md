@@ -130,6 +130,26 @@ mos_cluster.yaml  mos_lcmmachine.yaml  mos_mariadb.yaml    mos_subnet.yaml      
 mos_events.yaml   mos_ceph.yaml        mos_ipamhost.yaml   mos_pv_pvc.yaml      mcc_nodes.yaml    mcc_certs.yaml       mcc_subnet.yaml      
 ```
 
+By default, the script is set to automatically open the default browser with all files generated. You can also open them up on sublime text or vim by commenting the following lines:<br>
+
+```
+xdg-open "$HTML_REPORT" 2>/dev/null || open "$HTML_REPORT" 2>/dev/null
+```
+
+and uncommenting the following one for sublime text:<br>
+
+```
+#/Applications/Sublime\ Text.app/Contents/SharedSupport/bin/subl --new-window --command $LOGPATH/*.yaml 2> /dev/null
+```
+
+or these ones for vim:<br>
+```
+#nvim -R -c 'silent argdo set syntax=yaml' -p $LOGPATH/*_*
+#nvim -R -p $LOGPATH/*.yaml
+```
+
+
+
 By default, the script is set to automatically open Sublime text with all files generated. You can also open them up on vim by commenting the following lines:<br>
 
 ```
