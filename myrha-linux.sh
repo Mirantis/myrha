@@ -1777,9 +1777,21 @@ EOF
 
   # 6. CLOSE DOCUMENT
   printf "\n</main>\n" >>"$HTML_REPORT"
-  printf "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js\" data-manual></script>\n" >>"$HTML_REPORT"
-  printf "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js\"></script>\n" >>"$HTML_REPORT"
-  printf "</body>\n</html>" >>"$HTML_REPORT"
+  cat <<EOF >>"$HTML_REPORT"
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js" data-manual></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+<script>
+    window.onload = () => {
+        // Auto-select MCC and MOS clusters by default
+        ['MCC-CLUSTER', 'MOS-CLUSTER'].forEach(anchor => {
+            const link = document.querySelector(\`#sidebarList a[onclick*="'\${anchor}'"]\`);
+            if (link) toggleCard(link, anchor);
+        });
+    };
+</script>
+</body>
+</html>
+EOF
   echo "✅ Dashboard ready: $HTML_REPORT"
   xdg-open "$HTML_REPORT" 2>/dev/null || open "$HTML_REPORT" 2>/dev/null
 fi
