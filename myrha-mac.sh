@@ -3,946 +3,238 @@
 DATE=$(date +"%d-%m-%Y-%H-%M-%S")
 GREP="grep --color=auto"
 LOGPATH=myrha
-mkdir $LOGPATH 2> /dev/null 
+HTML_REPORT="$LOGPATH/report_$DATE.html"
+FULL_CWD=$(pwd)
+mkdir $LOGPATH 2>/dev/null
+rm -f "$LOGPATH"/* 2>/dev/null
 
-if ! command -v rg 2>&1 >/dev/null
-then
-    echo "the command ripgrep could not be found. Installing"
-    brew install ripgrep 2> /dev/null 
-    exit 1
-fi
-if ! command -v nvim 2>&1 >/dev/null
-then
-    echo "the command nvim could not be found. Installing"
-    brew install neovim 2> /dev/null 
-    exit 1
-fi
-if ! command -v /Applications/Sublime\ Text.app/Contents/SharedSupport/bin/subl 2>&1 >/dev/null
-then
-    echo "the command subl could not be found. Installing"
-    brew install sublime-text 2> /dev/null
-    exit 1
-fi
-if ! command -v yq 2>&1 >/dev/null
-then
-    echo "the command yq could not be found. Installing"
-    brew install yq 2> /dev/null 
-    exit 1
-fi
+# macOS Package Installation (Homebrew)
+for cmd in rg nvim subl yq bc; do
+  if ! command -v "$cmd" &>/dev/null; then
+    echo "Installing $cmd..."
+    brew install "$cmd" 2>/dev/null
+  fi
+done
 
+# --- HTML Initialization ---
+cat <<EOF >"$HTML_REPORT"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Mirantis Audit Report</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+<style>
+    :root { 
+        --primary: #24292e;   /* Modern Charcoal */
+        --accent: #3498db; 
+        --bg: #f4f7f6; 
+        --text: #333; 
+        --sidebar-width: 300px;
+        --sidebar-link: #ffffff;
+        --sidebar-hover: #3498db;
+        --danger: #e74c3c;
+    }
+    body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; min-height: 100vh; transition: all 0.3s; }
+    .sidebar { width: var(--sidebar-width); height: 100vh; background: var(--primary); color: white; position: sticky; top: 0; overflow-y: auto; padding: 20px; box-sizing: border-box; flex-shrink: 0; border-right: 1px solid rgba(0,0,0,0.1); transition: margin-left 0.3s; }
+    body.sidebar-hidden .sidebar { margin-left: calc(var(--sidebar-width) * -1); }
+    .search-box { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 20px; background: rgba(255,255,255,0.05); color: white; font-size: 0.85rem; outline: none; transition: 0.2s; }
+    .sidebar h3 { border-bottom: 2px solid var(--accent); padding-bottom: 10px; font-size: 1.1rem; margin-top: 0; color: white; }
+    .sidebar ul { list-style: none; padding: 0; }
+    .sidebar a { color: var(--sidebar-link); text-decoration: none; font-size: 0.85rem; display: block; padding: 8px 12px; border-radius: 4px; transition: 0.2s; margin-bottom: 2px; }
+    .sidebar a:hover { background: rgba(255, 255, 255, 0.1); color: var(--sidebar-hover); padding-left: 15px; }
+    .sidebar li.hidden { display: none; }
+    .main-content { flex: 1; padding: 40px; box-sizing: border-box; overflow-x: hidden; transition: width 0.3s; }
+    .header { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 30px; border-left: 8px solid var(--accent); position: relative; }
+    .card { background: white; border-radius: 12px; padding: 25px; margin-bottom: 35px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); min-height: 200px; border-left: 5px solid transparent; content-visibility: auto; contain-intrinsic-size: 1px 500px; }
+    h2 { color: var(--primary); margin: 0 0 15px 0; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+    .card-header-actions { display: flex; align-items: center; gap: 8px; }
+    .btn-tool { font-size: 0.7rem; background: #eee; color: #666; padding: 4px 10px; border-radius: 4px; border: 1px solid #ddd; cursor: pointer; transition: 0.2s; font-weight: bold; user-select: none; text-decoration: none; display: inline-block; }
+    .btn-copy.success { background: #27ae60 !important; color: white !important; border-color: #2ecc71 !important; }
+    .card.fullscreen { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 3000; margin: 0; border-radius: 0; overflow-y: auto; box-sizing: border-box; background: white; }
+    body.has-fullscreen { overflow: hidden; }
+    .card.fullscreen pre { max-height: calc(100vh - 120px); }
+    pre[class*="language-"] { max-height: 500px; border-radius: 8px; }
+    pre[class*="language-"].raw-code { white-space: pre !important; word-break: normal !important; overflow-x: auto !important; }
+    pre[class*="language-"].wrapped-code { white-space: pre-wrap !important; word-break: break-all !important; overflow-x: hidden !important; }
+    .filter-tabs { display: flex; gap: 5px; margin-bottom: 15px; }
+    .filter-btn { flex: 1; padding: 6px; font-size: 0.75rem; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; cursor: pointer; transition: 0.2s; }
+    .filter-btn.active { background: var(--accent); border-color: var(--accent); }
+</style>
+<script>
+    function toggleSidebar() { document.body.classList.toggle('sidebar-hidden'); }
+    let currentFilter = 'all';
+    function filterType(type) {
+        currentFilter = type;
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            const btnType = btn.getAttribute('onclick').match(/'([^']+)'/)[1];
+            btn.classList.toggle('active', btnType === type);
+        });
+        applyFilters();
+    }
+    function filterSidebar() { applyFilters(); }
+    function applyFilters() {
+        const query = document.getElementById('sidebarSearch').value.toLowerCase();
+        const items = document.querySelectorAll('#sidebarList li');
+        items.forEach(item => {
+            const text = item.innerText.toLowerCase();
+            const category = item.dataset.category;
+            const matchesSearch = text.includes(query);
+            const matchesFilter = currentFilter === 'all' || category === currentFilter || category === 'cluster';
+            item.classList.toggle('hidden', !matchesSearch || !matchesFilter);
+        });
+    }
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const codeBlock = entry.target.querySelector('pre code');
+                if (codeBlock && !entry.target.dataset.highlighted) {
+                    Prism.highlightElement(codeBlock);
+                    entry.target.dataset.highlighted = "true";
+                }
+            }
+        });
+    }, { threshold: 0.1 });
+    window.onload = () => { document.querySelectorAll('.card').forEach(card => observer.observe(card)); };
+    function toggleBlockWrap(btn, anchor) {
+        const card = document.getElementById(anchor);
+        const codeBlock = card.querySelector('pre');
+        codeBlock.classList.toggle('wrapped-code');
+        codeBlock.classList.toggle('raw-code');
+        btn.innerText = codeBlock.classList.contains('wrapped-code') ? 'Wrap: ON' : 'Wrap: OFF';
+    }
+    async function copyToClipboard(btn, anchor) {
+        const card = document.getElementById(anchor);
+        const code = card.querySelector('code').innerText;
+        try {
+            await navigator.clipboard.writeText(code);
+            const originalText = btn.innerText;
+            btn.innerText = 'Copied!';
+            btn.classList.add('success');
+            setTimeout(() => { btn.innerText = originalText; btn.classList.remove('success'); }, 2000);
+        } catch (err) { console.error('Copy failed:', err); }
+    }
+    function toggleFullScreen(btn, anchor) {
+        const card = document.getElementById(anchor);
+        const isFS = card.classList.toggle('fullscreen');
+        document.body.classList.toggle('has-fullscreen', isFS);
+        btn.innerText = isFS ? 'Exit Full Screen' : 'Full Screen';
+    }
+</script>
+</head>
+<body>
+    <nav class="sidebar">
+        <h3>AUDIT SECTIONS</h3>
+        <div class="filter-tabs">
+            <button class="filter-btn active" onclick="filterType('all')">Both</button>
+            <button class="filter-btn" onclick="filterType('mcc')">MCC</button>
+            <button class="filter-btn" onclick="filterType('mos')">MOS</button>
+        </div>
+        <input type="text" class="search-box" id="sidebarSearch" placeholder="Filter sections..." onkeyup="filterSidebar()">
+        <ul id="sidebarList">
+EOF
+
+# --- Cert audit function (macOS native) ---
 audit_k8s_secret() {
-    local YAML_FILE="$1"
-    
-    if [[ -z "$YAML_FILE" || ! -f "$YAML_FILE" ]]; then
-        echo "❌ Error: File '$YAML_FILE' not found."
-        return 1
+  local YAML_FILE="$1"
+  [[ -f "$YAML_FILE" ]] || return 1
+  local TMP_DIR=$(mktemp -d -t myrha)
+  local DATA_EXPR='(.Object.data // .data // .Object.stringData // .stringData)'
+  local KEYS=$(yq eval "$DATA_EXPR | keys | .[]" "$YAML_FILE" 2>/dev/null)
+  for KEY in $KEYS; do
+    local VAL=$(yq eval "$DATA_EXPR.\"$KEY\"" "$YAML_FILE" | tr -d '[:space:]')
+    local TARGET_FILE="$TMP_DIR/$KEY"
+    echo "$VAL" | base64 -d >"$TARGET_FILE" 2>/dev/null
+    if ! grep -q "BEGIN" "$TARGET_FILE" 2>/dev/null; then echo "$VAL" >"$TARGET_FILE"; fi
+    if grep -q "BEGIN" "$TARGET_FILE" 2>/dev/null; then
+      echo "--- Field: [$KEY] ---"
+      if [[ $(grep -m 1 "BEGIN" "$TARGET_FILE") == *"CERTIFICATE"* ]]; then
+        local CN=$(openssl x509 -noout -subject -in "$TARGET_FILE" -nameopt RFC2253 | sed 's/.*CN=//;s/,.*//')
+        local EXPIRY=$(openssl x509 -noout -enddate -in "$TARGET_FILE" | cut -d= -f2)
+        local SAN=$(openssl x509 -noout -ext subjectAltName -in "$TARGET_FILE" 2>/dev/null | grep -v "Subject Alternative Name" | xargs)
+        echo "📋 CN: $CN | 🌐 SAN: ${SAN:-None} | 📅 Expires: $EXPIRY"
+      fi
     fi
-
-    local TMP_DIR=$(mktemp -d)
-    local IS_WRAPPED=$(yq eval 'has("Object")' "$YAML_FILE" 2>/dev/null)
-    local DATA_PATH=".data"
-    [[ "$IS_WRAPPED" == "true" ]] && DATA_PATH=".Object.data"
-
-    local KEYS=$(yq eval "$DATA_PATH | keys | .[]" "$YAML_FILE" 2>/dev/null)
-    [[ -z "$KEYS" ]] && { rm -rf "$TMP_DIR"; return 1; }
-
-    echo "===================================================="
-    echo "🔍 AUDIT REPORT: $(basename "$YAML_FILE")"
-    echo "===================================================="
-
-    local LEAF_CERT=""
-    local CA_CERT=""
-    local PRIVATE_KEY=""
-
-    for KEY in $KEYS; do
-        local VAL=$(yq eval "$DATA_PATH.\"$KEY\"" "$YAML_FILE" | tr -d '[:space:]')
-        local TARGET_FILE="$TMP_DIR/$KEY"
-        echo "$VAL" | base64 -d > "$TARGET_FILE" 2>/dev/null
-        
-        local CONTENT_TYPE=$(grep -m 1 "BEGIN" "$TARGET_FILE")
-        echo "--- Field: [$KEY] ---"
-        
-        if [[ "$CONTENT_TYPE" == *"PRIVATE KEY"* ]]; then
-            PRIVATE_KEY="$TARGET_FILE"
-            cat "$TARGET_FILE"
-            echo -e "\n----------------------------------------------------"
-            local K_MD5=$(openssl rsa -noout -modulus -in "$TARGET_FILE" 2>/dev/null | openssl md5 | awk '{print $NF}')
-            echo "🔑 Key Modulus MD5: $K_MD5"
-
-        elif [[ "$CONTENT_TYPE" == *"CERTIFICATE"* ]]; then
-            cat "$TARGET_FILE"
-            echo -e "\n----------------------------------------------------"
-            
-            local CN=$(openssl x509 -noout -subject -in "$TARGET_FILE" -nameopt RFC2253 | sed 's/.*CN=//;s/,.*//')
-            local EXPIRY=$(openssl x509 -noout -enddate -in "$TARGET_FILE" | cut -d= -f2)
-            local ISSUER=$(openssl x509 -noout -issuer -in "$TARGET_FILE" -nameopt RFC2253)
-            local SUBJECT=$(openssl x509 -noout -subject -in "$TARGET_FILE" -nameopt RFC2253)
-            local C_MD5=$(openssl x509 -noout -modulus -in "$TARGET_FILE" | openssl md5 | awk '{print $NF}')
-            local SAN=$(openssl x509 -noout -ext subjectAltName -in "$TARGET_FILE" 2>/dev/null | tail -n +2 | sed 's/^[[:space:]]*//')
-
-            echo "📋 CN:      $CN"
-            echo "🌐 SAN:     ${SAN:-None}"
-            echo "📅 Expires: $EXPIRY"
-            echo "🔢 Cert Modulus MD5: $C_MD5"
-
-            if [[ "$KEY" == *"ca"* || "$ISSUER" == "$SUBJECT" ]]; then
-                CA_CERT="$TARGET_FILE"
-                echo "🏢 Role:    CA/Root Certificate"
-            else
-                LEAF_CERT="$TARGET_FILE"
-                echo "🌿 Role:    Leaf/Server Certificate"
-            fi
-        fi
-        echo ""
-    done
-
-    echo "===================================================="
-    echo "⚖️  FINAL VALIDATIONS"
-    echo "===================================================="
-
-    # 1. Private Key vs Leaf Certificate Match
-    printf "Match (Key <-> Leaf): "
-    if [[ -n "$LEAF_CERT" && -n "$PRIVATE_KEY" ]]; then
-        local FINAL_C_MD5=$(openssl x509 -noout -modulus -in "$LEAF_CERT" | openssl md5 | awk '{print $NF}')
-        local FINAL_K_MD5=$(openssl rsa -noout -modulus -in "$PRIVATE_KEY" 2>/dev/null | openssl md5 | awk '{print $NF}')
-        [[ "$FINAL_C_MD5" == "$FINAL_K_MD5" ]] && echo "✅ VALID" || echo "❌ MISMATCH"
-    else
-        echo "ℹ️  SKIPPED (Missing either Private Key or Leaf Cert)"
-    fi
-
-    # 2. Trust Chain Validation
-    printf "Chain (Leaf <-> CA):  "
-    if [[ -n "$LEAF_CERT" && -n "$CA_CERT" ]]; then
-        local VERIFY_OUT=$(openssl verify -CAfile "$CA_CERT" "$LEAF_CERT" 2>&1)
-        [[ "$VERIFY_OUT" == *"OK"* ]] && echo "✅ VERIFIED" || echo "❌ FAILED ($VERIFY_OUT)"
-    else
-        echo "ℹ️  SKIPPED (Missing either CA Cert or Leaf Cert)"
-    fi
-
-    rm -rf "$TMP_DIR"
-    echo "===================================================="
-    echo ""
+  done
+  rm -rf "$TMP_DIR"
 }
 
-echo "Generating report. This operation may take several minutes... Please wait."
-rm $LOGPATH/* 2> /dev/null
-
-# List all files on logs:
-find . -not -path '$LOGPATH' -type f -name '*' > $LOGPATH/files
-
-# Discover MCC and MOS cluster name and namespace:
-if ls */objects/namespaced/default/cluster.k8s.io/clusters/*.yaml 2> /dev/null 1> /dev/null ; then
-    grep -m1 "    name: " $(ls */objects/namespaced/default/cluster.k8s.io/clusters/*.yaml 2> /dev/null) |awk '{print $2}' 2> /dev/null  1> $LOGPATH/mcc-cluster-name
-    MCCNAME=$(cat $LOGPATH/mcc-cluster-name)
-    echo "MCC cluster found"
-    grep -m1 "    namespace: " $(ls */objects/namespaced/default/cluster.k8s.io/clusters/*.yaml 2> /dev/null) |awk '{print $2}' 2> /dev/null  1> $LOGPATH/mcc-cluster-namespace
-    MCCNAMESPACE=$(cat $LOGPATH/mcc-cluster-namespace)
-    echo "MCC namespace found"
-else
-    MCCNAME=
-    echo "MCC cluster not found"
-    MCCNAMESPACE=
-    echo "MCC namespace not found"
+# --- DISCOVERY ---
+[[ -d "./logs" ]] && BASE_DIR="./logs" || BASE_DIR="."
+find "$BASE_DIR" -not -path "$LOGPATH/*" -type f >"$LOGPATH/files"
+MCC_DIR=$(find "$BASE_DIR" -type d -name "kaas-mgmt" | head -n 1)
+MOS_DIR=$(find "$BASE_DIR" -type d -name "mos" | head -n 1)
+if [[ -n "$MCC_DIR" ]]; then
+  MCC_FILE=$(ls "$MCC_DIR"/objects/namespaced/default/cluster.k8s.io/clusters/*.yaml 2>/dev/null | head -n 1)
+  [[ -f "$MCC_FILE" ]] && MCCNAME=$(yq eval '.Object.metadata.name // .metadata.name' "$MCC_FILE")
+  [[ -f "$MCC_FILE" ]] && MCCNAMESPACE=$(yq eval '.Object.metadata.namespace // .metadata.namespace' "$MCC_FILE")
 fi
-if ls -d */objects/namespaced/openstack 2> /dev/null 1> /dev/null ; then
-    ls -d */objects/namespaced/openstack |awk -F "/" -v 'OFS=/' '{print $1}' 2> /dev/null 1> $LOGPATH/mos-cluster-name
-    MOSNAME=$(cat $LOGPATH/mos-cluster-name)
-    echo "MOS cluster found"
-else
-    MOSNAME=
-    echo "MOS cluster not found"
+[[ -n "$MOS_DIR" ]] && MOSNAME=$(basename "$MOS_DIR")
+if [[ -n "$MCCNAME" && -n "$MOS_DIR" ]]; then
+  MOS_CLUSTER_FILE=$(ls "$MCC_DIR"/objects/namespaced/*/cluster.k8s.io/clusters/*.yaml 2>/dev/null | grep -v default | head -n 1)
+  [[ -f "$MOS_CLUSTER_FILE" ]] && MOSNAMESPACE=$(yq eval '.Object.metadata.namespace // .metadata.namespace' "$MOS_CLUSTER_FILE")
 fi
-if [[ -n "$MCCNAME" ]] ; then
-    grep -m1 "    namespace: " $(ls ./$MCCNAME/objects/namespaced/*/cluster.k8s.io/clusters/*.yaml |grep -v default 2> /dev/null) |awk '{print $2}' 2> /dev/null 1> $LOGPATH/mos-cluster-namespace
-    MOSNAMESPACE=$(cat $LOGPATH/mos-cluster-namespace)
-    echo "MOS namespace found"
-else
-    MOSNAMESPACE=
-    echo "MOS namespace not found"
-fi
-#grep "namespaced/rook-ceph/apps/deployments/" $LOGPATH/files |grep osd |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g' > $LOGPATH/ceph-osd
-#grep "namespaced/rook-ceph/apps/deployments/" $LOGPATH/files |grep mon |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g' > $LOGPATH/ceph-mon
-#grep "namespaced/rook-ceph/apps/deployments/" $LOGPATH/files |grep mgr |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g' > $LOGPATH/ceph-mgr
-#grep "namespaced/rook-ceph/apps/deployments/" $LOGPATH/files |grep rgw |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g' > $LOGPATH/ceph-rgw
-#find -path "*/namespaced/rook-ceph/apps/deployments/*osd*" |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g' |sed -r '/^\s*$/d' > $LOGPATH/ceph-osd
-#find -path "*/namespaced/rook-ceph/apps/deployments/*mon*" |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g' |sed -r '/^\s*$/d' > $LOGPATH/ceph-mon
-#find -path "*/namespaced/rook-ceph/apps/deployments/*mgr*" |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g' |sed -r '/^\s*$/d' > $LOGPATH/ceph-mgr
-#find -path "*/namespaced/rook-ceph/apps/deployments/*rgw*" |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g' |sed -r '/^\s*$/d' > $LOGPATH/ceph-rgw
 
-# MOS Analysis
+# --- GATHERING ---
 if [[ -n "$MOSNAME" ]]; then
-  echo "Gathering MOS cluster details..."
-  echo "################# [MOS CLUSTER DETAILS] #################" >$LOGPATH/mos_cluster
-  MOSVER1=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |
- sed 's/release\://' | sed -e 's/[[:space:]]//g' -e 's/+/./' |awk -F '.' '{print $1}')
-  MOSVER2=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |
- sed 's/release\://' | sed -e 's/[[:space:]]//g' -e 's/+/./' |awk -F '.' '{print $2}')
-  MOSVER3=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |
- sed 's/release\://' | sed -e 's/[[:space:]]//g' -e 's/+/./' |awk -F '.' '{print $3}')
-  MOSVER4=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |
- sed 's/release\://' | sed -e 's/[[:space:]]//g' -e 's/+/./' |awk -F '.' '{print $4}')
-  MOSVER5=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |
- sed 's/release\://' | sed -e 's/[[:space:]]//g' -e 's/+/./' |awk -F '.' '{print $5}')
-  MOSVER6=$(grep -m1 "    release: " ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |
- sed 's/release\://' | sed -e 's/[[:space:]]//g' -e 's/+/./' |awk -F '.' '{print $6}')
-  printf "## MOS release details (Managed): $MOSVER1.$MOSVER2.$MOSVER3+$MOSVER4.$MOSVER5.$MOSVER6" >>$LOGPATH/mos_cluster
-  echo "" >>$LOGPATH/mos_cluster
-  if (( $(echo "$MOSVER4.$MOSVER5 >= 25.2" | bc -l) )); then
-    echo "https://docs.mirantis.com/mosk/25.2/release-notes/25.2-series/25.2.$MOSVER6.html" | sed 's/\.\././' >>$LOGPATH/mos_cluster
-  else
-    echo "https://docs.mirantis.com/mosk/25.1-and-earlier/release-notes/release-notes-mosk-old/$MOSVER4.$MOSVER5-series/$MOSVER4.$MOSVER5.$MOSVER6.html" | sed 's/\.\././' >>$LOGPATH/mos_cluster
-  fi
-  echo "" >>$LOGPATH/mos_cluster
-  printf "## MOS Bugs - $MOSVER4.$MOSVER5.$MOSVER6": >>$LOGPATH/mos_cluster
-  echo "" >>$LOGPATH/mos_cluster
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.1.1" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.2%20%2F%20MOSK%2023.1.1%20%28Patch%20release%29%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.1.2" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.3%20%2F%20MOSK%2023.1.2%20%28Patch%20release%29%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.1.3" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.4%20%2F%20MOSK%2023.1.3%20%28Patch%20release%29%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.1.4" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.5%20%2F%20MOSK%2023.1.4%20%28Patch%20release%29%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.2.1" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.3%20%2F%20MOSK%2023.2.1%20%28Patch%20release1%29%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.2.2" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.4%20%2F%20MOSK%2023.2.2%20%28Patch%20release2%29%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.2.3" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.5%20%2F%20MOSK%2023.2.3%20%28Patch%20release3%29%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.3." ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20IN%20%28%22KaaS%202.25%20%2F%20MOSK%2023.3%22%2C%20%22KaaS%202.25.x%20%2F%20MOSK%2023.3.x%22%29" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.3.1" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.1%20%2F%20MOSK%2023.3.1%20%28Patch%20release1%29%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.3.2" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.2%20%2F%20MOSK%2023.3.2%20%28Patch%20release2%29%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.3.3" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.3%20%2F%20MOSK%2023.3.3%20%28Patch%20release3%29%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "23.3.4" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.4%20%2F%20MOSK%2023.3.4%20%28Patch%20release4%29%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6"  == "24.1." ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26%20%2F%20MOSK%2024.1%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.1.1" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.1%20%2F%20MOSK%2024.1.1%20%28Patch%20release1%29%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.1.2" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.2%20%2F%20MOSK%2024.1.2%20%28Patch%20release2%29%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.1.3" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.3%20%2F%20MOSK%2024.1.3%20%28Patch%20release3%29%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.1.4" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.4%20%2F%20MOSK%2024.1.4%20%28Patch%20release4%29%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.1.5" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.5%20%2F%20MOSK%2024.1.5%20%28Patch%20release5%29%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.1.6" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.1%20%2F%20MOSK%2024.1.6%20%28Patch%20release6%29%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.1.7" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.2%20%2F%20MOSK%2024.1.7%20%28Patch%20release7%29%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.2." ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.27%20%2F%20MOSK%2024.2%22" >>$LOGPATH/mos_cluster
-  fi  
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.2.1" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.3%20%2F%20MOSK%2024.2.1%20%28Patch%20release1%29%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.2.2" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.4%20%2F%20MOSK%2024.2.2%20%28Patch%20release2%29%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.2.3" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.28.1%20%2F%20MOSK%2024.2.3%20(Patch%20release3)%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.2.4" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.28.2%20%2F%20MOSK%2024.2.4%20(Patch%20release4)%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.2.5" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.28.3%20%2F%20MOSK%2024.2.5%20(Patch%20release5)%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.3" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.28%20%2F%20MOSK%2024.3%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.3.1" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.4%20%2F%20MOSK%2024.3.1%20%28Patch%20release1%29%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.3.2" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.5%20%2F%20MOSK%2024.3.2%20%28Patch%20release2%29%22" >>$LOGPATH/mos_cluster
-  fi  
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.3.3" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.29.1%20%2F%20MOSK%2024.3.3%20(Patch%20release3)%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.3.4" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.2%20%2F%20MOSK%2024.3.4%20%28Patch%20release4%29%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.3.5" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.29.3%20%2F%20MOSK%2024.3.5%20(Patch%20release5)%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "24.3.6" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.29.4%20%2F%20MOSK%2024.3.6%20(Patch%20release6)%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "25.1." ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.5%20%2F%20MOSK%2025.2.5%20(Patch%20release5)%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "25.1.1" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.5%20%2F%20MOSK%2025.2.5%20(Patch%20release5)%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "25.2." ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30%20%2F%20MOSK%2025.2%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "25.2.1" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.1%20%2F%20MOSK%2025.2.1%20(Patch%20release1)%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "25.2.2" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.2%20%2F%20MOSK%2025.2.2%20(Patch%20release2)%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "25.2.3" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.3%20%2F%20MOSK%2025.2.3%20(Patch%20release3)%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "25.2.4" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.4%20%2F%20MOSK%2025.2.4%20(Patch%20release4)%22" >>$LOGPATH/mos_cluster
-  fi
-  if [[ "$MOSVER4.$MOSVER5.$MOSVER6" == "25.2.5" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.5%20%2F%20MOSK%2025.2.5%20(Patch%20release5)%22" >>$LOGPATH/mos_cluster
-  fi
-echo "" >> $LOGPATH/mos_cluster
-echo "## Details and versions:" >> $LOGPATH/mos_cluster
-printf '# ' >> $LOGPATH/mos_cluster; ls ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml >> $LOGPATH/mos_cluster
-grep -m1 "      release:" ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml >> $LOGPATH/mos_cluster
-grep -m1 "      openstack_version:" ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml >> $LOGPATH/mos_cluster
-sed -n '/    services:/,$p' ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml >> $LOGPATH/mos_cluster
-echo "" >> $LOGPATH/mos_cluster
-if [[ -n "$MCCNAME" ]] ; then
-echo "## LCM status:" >> $LOGPATH/mos_cluster
-printf '# ' >> $LOGPATH/mos_nodes; ls ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/lcm.mirantis.com/lcmclusters/$MOSNAME.yaml >> $LOGPATH/mos_cluster
-sed -n '/  status:/,/    requestedNodes:/p' ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/lcm.mirantis.com/lcmclusters/$MOSNAME.yaml >> $LOGPATH/mos_cluster
-fi
-fi
+  OUT="$LOGPATH/mos_cluster"; echo "################# [MOS CLUSTER DETAILS] #################" >"$OUT"
+  MOS_STATUS_FILE=$(ls $MOS_DIR/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml 2>/dev/null | head -n 1)
+  [[ -n "$MOS_STATUS_FILE" ]] && yq eval '.Object.status // .status' "$MOS_STATUS_FILE" >>"$OUT"
+  
+  for s in neutron nova keystone cinder glance horizon rabbitmq libvirt; do
+    OUT="$LOGPATH/mos_openstack_$s"; echo "################# [MOS OPENSTACK ${s^^} LOGS] #################" >"$OUT"
+    grep "$s" $LOGPATH/files | grep "\.log" | while read -r l; do
+      echo "### $l:" >>"$OUT"; grep -E 'ERR|WARN|error|warning' "$l" | sed -E '/^\s*$/d' | tail -n 150 >>"$OUT"
+    done
+  done
 
-if [[ -n "$MOSNAME" ]] ; then
-echo "Gathering MOS cluster events..."
-echo "################# [MOS EVENTS (WARNING+ERRORS)] #################" > $LOGPATH/mos_events
-echo "" >> $LOGPATH/mos_events
-echo "## Analyzed files:" >> $LOGPATH/mos_events
-printf '# ' >> $LOGPATH/mos_events; ls ./$MOSNAME/objects/events.log >> $LOGPATH/mos_events
-grep -E "Warning|Error" ./$MOSNAME/objects/events.log |sort -M >> $LOGPATH/mos_events
-fi
-
-if [[ -n "$MOSNAME" ]] ; then
-echo "Gathering MOS node details..."
-echo "################# [MOS NODE DETAILS] #################" > $LOGPATH/mos_nodes
-echo "" >> $LOGPATH/mos_nodes
-grep "/core/nodes" $LOGPATH/files |grep $MOSNAME > $LOGPATH/mos-nodes
-printf "## Nodes" >> $LOGPATH/mos_nodes ; printf " (Total: `wc -l < $LOGPATH/mos-nodes`)" >> $LOGPATH/mos_nodes
-echo "" >> $LOGPATH/mos_nodes
-while read -r line; do printf '# '; printf "$line" |awk -F "/" -v 'OFS=/' '{print $7}' |sed 's|\.yaml||g'; done < $LOGPATH/mos-nodes >> $LOGPATH/mos_nodes
-while read -r line; do echo ""; printf "# $line:"; echo ""; grep -E "      kaas.mirantis.com/machine-name:" $line; sed -n '/    nodeInfo:/,/      systemUUID:/p' $line; sed -n '/    conditions:/,/    daemonEndpoints:/p' $line |head -n 1; done < $LOGPATH/mos-nodes >> $LOGPATH/mos_nodes
-fi
-
-if [[ -n "$MCCNAME" ]] ; then
-echo "Gathering MOS LCM machine details..."
-echo "################# [MOS LCM MACHINE DETAILS] #################" > $LOGPATH/mos_lcmmachine
-grep ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/lcm.mirantis.com/lcmmachines $LOGPATH/files > $LOGPATH/mos-lcmmachine
-echo "" >> $LOGPATH/mos_lcmmachine
-printf '## Machines' >> $LOGPATH/mos_lcmmachine ; printf " (Total: `wc -l < $LOGPATH/mos-lcmmachine`)" >> $LOGPATH/mos_lcmmachine
-echo "" >> $LOGPATH/mos_lcmmachine
-while read -r line; do printf "# "; printf "$line" |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g'; done < $LOGPATH/mos-lcmmachine >> $LOGPATH/mos_lcmmachine
-echo "" >> $LOGPATH/mos_lcmmachine
-while read -r line; do printf "# $line:"; echo ""; sed -n '/  status:/,/    tokenSecret:/p' $line; echo ""; done < $LOGPATH/mos-lcmmachine >> $LOGPATH/mos_lcmmachine
-echo "" >> $LOGPATH/mos_lcmmachine
-fi
-
-if [[ -n "$MOSNAME" ]] ; then
-echo "Gathering MOS Ceph details..."
-echo "################# [MOS CEPH DETAILS] #################" > $LOGPATH/mos_ceph
-echo "" >> $LOGPATH/mos_ceph
-echo "## Rook-ceph details:" >> $LOGPATH/mos_ceph
-printf '# ' >> $LOGPATH/mos_ceph; ls ./$MOSNAME/objects/namespaced/rook-ceph/ceph.rook.io/cephclusters/rook-ceph.yaml >> $LOGPATH/mos_ceph
-sed -n '/    ceph:/,/    version:/p' "./$MOSNAME/objects/namespaced/rook-ceph/ceph.rook.io/cephclusters/rook-ceph.yaml" |head -n 1 >> $LOGPATH/mos_ceph
-echo "" >> $LOGPATH/mos_ceph
-echo "## Mgr node logs (Warnings/Errors):" >> $LOGPATH/mos_ceph
-grep "/mgr.log" $LOGPATH/files > $LOGPATH/ceph-mgr
-while read -r line; do printf "# $line:"; echo ""; grep -iE 'error|fail|warn' $line |sed -r '/^\s*$/d'; echo ""; done < $LOGPATH/ceph-mgr >> $LOGPATH/mos_ceph
-echo "## Mon node logs (Warnings/Errors):" >> $LOGPATH/mos_ceph
-grep "/mon.log" $LOGPATH/files > $LOGPATH/ceph-mon
-while read -r line; do printf "# $line:"; echo ""; grep -iE 'error|fail|warn' $line |sed -r '/^\s*$/d'; echo ""; done < $LOGPATH/ceph-mon >> $LOGPATH/mos_ceph
-echo "## Osd node logs (Warnings/Errors):" >> $LOGPATH/mos_ceph
-grep "/osd.log" $LOGPATH/files > $LOGPATH/ceph-osd
-while read -r line; do printf "# $line:"; echo ""; grep -iE 'error|fail|warn' $line |sed -r '/^\s*$/d'; echo ""; done < $LOGPATH/ceph-osd >> $LOGPATH/mos_ceph
-fi
-
-if [[ -n "$MOSNAME" ]] ; then
-echo "Gathering MOS Openstack details and logs..."
-echo "################# [MOS OPENSTACK DETAILS] #################" > $LOGPATH/mos_openstack
-echo "" >> $LOGPATH/mos_openstack
-echo "## OSDPL LCM status details:" >> $LOGPATH/mos_openstack
-printf '# ' >> $LOGPATH/mos_openstack; ls ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml >> $LOGPATH/mos_openstack
-sed -n '/    osdpl:/,/    services:/p' ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml |head -n -1 >> $LOGPATH/mos_openstack
-echo "" >> $LOGPATH/mos_openstack
-echo "## OSDPL details:" >> $LOGPATH/mos_openstack
-printf '# ' >> $LOGPATH/mos_openstack; ls ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeployments/*.yaml >> $LOGPATH/mos_openstack
-sed -n '/  spec:/,/  status:/p' ./$MOSNAME/objects/namespaced/openstack/lcm.mirantis.com/openstackdeployments/*.yaml |head -n 1 >> $LOGPATH/mos_openstack
-echo "" >> $LOGPATH/mos_openstack
-echo "## Logs from neutron-server pods (Errors/Warnings - last 100 lines):" >> $LOGPATH/mos_openstack
-grep 'neutron-server.log' $LOGPATH/files > $LOGPATH/mos-openstack-neutron-server
-while read -r line; do printf "# $line:"; echo ""; grep -E 'ERR|WARN' $line |sed -r '/^\s*$/d' |tail -n 100; echo ""; done < $LOGPATH/mos-openstack-neutron-server >> $LOGPATH/mos_openstack
-echo "" >> $LOGPATH/mos_openstack
-echo "## Logs from nova-compute pods (Errors/Warnings - last 100 lines):" >> $LOGPATH/mos_openstack
-grep 'nova-compute.log' $LOGPATH/files > $LOGPATH/mos-openstack-nova-compute
-while read -r line; do printf "# $line:"; echo ""; grep -E 'ERR|WARN' $line |sed -r '/^\s*$/d' |tail -n 100; echo ""; done < $LOGPATH/mos-openstack-nova-compute >> $LOGPATH/mos_openstack
-echo "" >> $LOGPATH/mos_openstack
-echo "## Logs from nova-scheduler pods (Errors/Warnings - last 100 lines):" >> $LOGPATH/mos_openstack
-grep 'nova-scheduler.log' $LOGPATH/files > $LOGPATH/mos-openstack-nova-scheduler
-while read -r line; do printf "# $line:"; echo ""; grep -E 'ERR|WARN' $line |sed -r '/^\s*$/d' |tail -n 100; echo ""; done < $LOGPATH/mos-openstack-nova-scheduler >> $LOGPATH/mos_openstack
-echo "" >> $LOGPATH/mos_openstack
-echo "## Logs from libvirt pods (Errors/Warnings - last 100 lines):" >> $LOGPATH/mos_openstack
-grep 'libvirt.log' $LOGPATH/files > $LOGPATH/mos-openstack-libvirt
-while read -r line; do printf "# $line:"; echo ""; grep -E 'ERR|WARN' $line |sed -r '/^\s*$/d' |tail -n 100; echo ""; done < $LOGPATH/mos-openstack-libvirt >> $LOGPATH/mos_openstack
-echo "" >> $LOGPATH/mos_openstack
-echo "## Logs from keystone-api pods (Errors/Warnings - last 100 lines):" >> $LOGPATH/mos_openstack
-grep 'keystone-api.log' $LOGPATH/files > $LOGPATH/mos-openstack-keystone-api
-while read -r line; do printf "# $line:"; echo ""; grep -E 'ERR|WARN' $line |sed -r '/^\s*$/d' |tail -n 100; echo ""; done < $LOGPATH/mos-openstack-keystone-api >> $LOGPATH/mos_openstack
-echo "" >> $LOGPATH/mos_openstack
-echo "## Logs from cinder-api pods (Errors/Warnings - last 100 lines):" >> $LOGPATH/mos_openstack
-grep 'cinder-api.log' $LOGPATH/files > $LOGPATH/mos-openstack-cinder-api
-while read -r line; do printf "# $line:"; echo ""; grep -E 'ERR|WARN' $line |sed -r '/^\s*$/d' |tail -n 100; echo ""; done < $LOGPATH/mos-openstack-cinder-api >> $LOGPATH/mos_openstack
-echo "" >> $LOGPATH/mos_openstack
-echo "## Logs from glance-api pods (Errors/Warnings - last 100 lines):" >> $LOGPATH/mos_openstack
-grep '/glance-api.log' $LOGPATH/files > $LOGPATH/mos-openstack-glance-api
-while read -r line; do printf "# $line:"; echo ""; grep -E 'ERR|WARN' $line |sed -r '/^\s*$/d' |tail -n 100; echo ""; done < $LOGPATH/mos-openstack-glance-api >> $LOGPATH/mos_openstack
-echo "" >> $LOGPATH/mos_openstack
-echo "## Logs from cinder-api pods (Errors/Warnings - last 100 lines):" >> $LOGPATH/mos_openstack
-grep 'cinder-api.log' $LOGPATH/files > $LOGPATH/mos-openstack-cinder-api
-while read -r line; do printf "# $line:"; echo ""; grep -E 'ERR|WARN' $line |sed -r '/^\s*$/d' |tail -n 100; echo ""; done < $LOGPATH/mos-openstack-cinder-api >> $LOGPATH/mos_openstack
-echo "" >> $LOGPATH/mos_openstack
-echo "## Logs from cinder-volume pods (Errors/Warnings - last 100 lines):" >> $LOGPATH/mos_openstack
-grep 'cinder-volume.log' $LOGPATH/files > $LOGPATH/mos-openstack-cinder-volume
-while read -r line; do printf "# $line:"; echo ""; grep -E 'ERR|WARN' $line |sed -r '/^\s*$/d' |tail -n 100; echo ""; done < $LOGPATH/mos-openstack-cinder-volume >> $LOGPATH/mos_openstack
-echo "" >> $LOGPATH/mos_openstack
-echo "## Logs from horizon pods (Errors/Warnings - last 100 lines):" >> $LOGPATH/mos_openstack
-grep 'horizon.log' $LOGPATH/files > $LOGPATH/mos-openstack-horizon
-while read -r line; do printf "# $line:"; echo ""; grep -E 'ERR|WARN' $line |sed -r '/^\s*$/d' |tail -n 100; echo ""; done < $LOGPATH/mos-openstack-horizon >> $LOGPATH/mos_openstack
-echo "" >> $LOGPATH/mos_openstack
-echo "## Logs from rabbitmq pods (Errors/Warnings - last 100 lines):" >> $LOGPATH/mos_openstack
-grep '/rabbitmq.log' $LOGPATH/files > $LOGPATH/mos-openstack-rabbitmq
-while read -r line; do printf "# $line:"; echo ""; grep -E '\[warning\]|\[error\]' $line |sed -r '/^\s*$/d' |tail -n 100; echo ""; done < $LOGPATH/mos-openstack-rabbitmq >> $LOGPATH/mos_openstack
-fi
-
-if [[ -n "$MOSNAME" ]] ; then
-echo "Gathering MOS Mariadb details and logs..."
-echo "################# [MOS MARIADB DETAILS] #################" > $LOGPATH/mos_mariadb
-echo "" >> $LOGPATH/mos_mariadb
-echo "## Configmap:" >> $LOGPATH/mos_mariadb
-printf '# ' >> $LOGPATH/mos_mariadb; ls ./$MOSNAME/objects/namespaced/openstack/core/configmaps/openstack-mariadb-mariadb-state.yaml >> $LOGPATH/mos_mariadb
-sed -n '/  data:/,/    creationTimestamp:/p' ./$MOSNAME/objects/namespaced/openstack/core/configmaps/openstack-mariadb-mariadb-state.yaml >> $LOGPATH/mos_mariadb
-echo "" >> $LOGPATH/mos_mariadb
-echo "## Logs from controller pod (Errors/Warnings):" >> $LOGPATH/mos_mariadb
-printf '# ' >> $LOGPATH/mos_mariadb; ls ./$MOSNAME/objects/namespaced/openstack/core/pods/mariadb-controller-*/controller.log >> $LOGPATH/mos_mariadb
-grep -iE 'error|fail|warn' ./$MOSNAME/objects/namespaced/openstack/core/pods/mariadb-controller-*/controller.log |sed -r '/^\s*$/d' >> $LOGPATH/mos_mariadb
-echo "" >> $LOGPATH/mos_mariadb
-echo "## Logs from server-0 pods (Errors/Warnings):" >> $LOGPATH/mos_mariadb
-printf '# ' >> $LOGPATH/mos_mariadb; ls ./$MOSNAME/objects/namespaced/openstack/core/pods/mariadb-server-0/mariadb.log >> $LOGPATH/mos_mariadb
-grep -E 'ERR|WARN' ./$MOSNAME/objects/namespaced/openstack/core/pods/mariadb-server-0/mariadb.log |sed -r '/^\s*$/d'  >> $LOGPATH/mos_mariadb
-echo "" >> $LOGPATH/mos_mariadb
-echo "## Logs from server-1 pods (Errors/Warnings):" >> $LOGPATH/mos_mariadb
-printf '# ' >> $LOGPATH/mos_mariadb; ls ./$MOSNAME/objects/namespaced/openstack/core/pods/mariadb-server-1/mariadb.log >> $LOGPATH/mos_mariadb
-grep -E 'ERR|WARN' ./$MOSNAME/objects/namespaced/openstack/core/pods/mariadb-server-1/mariadb.log |sed -r '/^\s*$/d'  >> $LOGPATH/mos_mariadb
-echo "" >> $LOGPATH/mos_mariadb
-echo "## Logs from server-2 pods (Errors/Warnings):" >> $LOGPATH/mos_mariadb
-printf '# ' >> $LOGPATH/mos_mariadb; ls ./$MOSNAME/objects/namespaced/openstack/core/pods/mariadb-server-2/mariadb.log >> $LOGPATH/mos_mariadb
-grep -E 'ERR|WARN' ./$MOSNAME/objects/namespaced/openstack/core/pods/mariadb-server-2/mariadb.log |sed -r '/^\s*$/d'  >> $LOGPATH/mos_mariadb
-fi
-
-if [[ -n "$MOSNAME" ]]; then
-  echo "Gathering MOS certificates..."
-  echo "################# [MOS CERTIFICATE DETAILS] #################" >$LOGPATH/mos_certs
-  echo "" >>$LOGPATH/mos_certs
-  echo "## TF certificates:" >>$LOGPATH/mos_certs
-  printf '# ' >>$LOGPATH/mos_certs
-  ls ./$MOSNAME/objects/namespaced/tf/core/secrets/tungstenfabric-operator-webhook-server-cert.yaml >>$LOGPATH/mos_certs
-  audit_k8s_secret "./$MOSNAME/objects/namespaced/tf/core/secrets/tungstenfabric-operator-webhook-server-cert.yaml" >>$LOGPATH/mos_certs
-  printf '# ' >>$LOGPATH/mos_certs
-  ls ./$MOSNAME/objects/namespaced/tf/core/secrets/tfwebui-tls-public.yaml >>$LOGPATH/mos_certs
-  audit_k8s_secret "./$MOSNAME/objects/namespaced/tf/core/secrets/tfwebui-tls-public.yaml" >>$LOGPATH/mos_certs
-  echo "" >>$LOGPATH/mos_certs
-  echo "## OIDC certificates:" >>$LOGPATH/mos_certs
-  printf '# ' >>$LOGPATH/mos_certs
-  ls ./$MOSNAME/objects/namespaced/openstack/core/secrets/oidc-cert.yaml >>$LOGPATH/mos_certs
-  audit_k8s_secret "./$MOSNAME/objects/namespaced/openstack/core/secrets/oidc-cert.yaml" >>$LOGPATH/mos_certs
-  echo "" >>$LOGPATH/mos_certs
-  echo "## Octavia certificates:" >>$LOGPATH/mos_certs
-  printf '# ' >>$LOGPATH/mos_certs
-  ls ./$MOSNAME/objects/namespaced/openstack/core/secrets/octavia-amphora-tls-certs.yaml >>$LOGPATH/mos_certs
-  audit_k8s_secret "./$MOSNAME/objects/namespaced/openstack/core/secrets/octavia-amphora-tls-certs.yaml" >>$LOGPATH/mos_certs
-  echo "" >>$LOGPATH/mos_certs
-  echo "## Horizon certificates:" >>$LOGPATH/mos_certs
-  printf '# ' >>$LOGPATH/mos_certs
-  ls ./$MOSNAME/objects/namespaced/openstack/core/secrets/horizon-tls-public.yaml >>$LOGPATH/mos_certs
-  audit_k8s_secret "./$MOSNAME/objects/namespaced/openstack/core/secrets/horizon-tls-public.yaml" >>$LOGPATH/mos_certs
-  echo "" >>$LOGPATH/mos_certs
-  echo "## Keystone certificates:" >>$LOGPATH/mos_certs
-  printf '# ' >>$LOGPATH/mos_certs
-  ls ./$MOSNAME/objects/namespaced/openstack/core/secrets/keystone-tls-public.yaml >>$LOGPATH/mos_certs
-  audit_k8s_secret "./$MOSNAME/objects/namespaced/openstack/core/secrets/keystone-tls-public.yaml" >>$LOGPATH/mos_certs
-  echo "" >>$LOGPATH/mos_certs
-  echo "## CEPH RGW certificates:" >>$LOGPATH/mos_certs
-  printf '# ' >>$LOGPATH/mos_certs
-  ls ./$MOSNAME/objects/namespaced/rook-ceph/core/secrets/rgw-ssl-certificate.yaml >>$LOGPATH/mos_certs
-  audit_k8s_secret "./$MOSNAME/objects/namespaced/rook-ceph/core/secrets/rgw-ssl-certificate.yaml" >>$LOGPATH/mos_certs
-  echo "" >>$LOGPATH/mos_certs
-  echo "## Stacklight certificates:" >>$LOGPATH/mos_certs
-  printf '# ' >>$LOGPATH/mos_certs
-  ls ./$MOSNAME/objects/namespaced/stacklight/core/secrets/oidc-cert.yaml >>$LOGPATH/mos_certs
-  audit_k8s_secret "./$MOSNAME/objects/namespaced/stacklight/core/secrets/oidc-cert.yaml" >>$LOGPATH/mos_certs
-fi
-
-if [[ -n "$MCCNAME" ]] ; then
-echo "Gathering MOS Ipamhost details..."
-echo "################# [MOS IPAMHOST DETAILS] #################" > $LOGPATH/mos_ipamhost
-echo "" >> $LOGPATH/mos_ipamhost
-grep ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/ipam.mirantis.com/ipamhosts/ $LOGPATH/files > $LOGPATH/mos-ipamhost
-printf '## Ipamhosts' >> $LOGPATH/mos_ipamhost ; printf " (Total: `wc -l < $LOGPATH/mos-ipamhost`)" >> $LOGPATH/mos_ipamhost
-echo "" >> $LOGPATH/mos_ipamhost
-while read -r line; do printf "# "; printf "$line" |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g'; done < $LOGPATH/mos-ipamhost >> $LOGPATH/mos_ipamhost
-echo "" >> $LOGPATH/mos_ipamhost
-while read -r line; do printf "# $line:"; echo ""; sed -n '/  spec:/,/    state:/p' $line; echo ""; done < $LOGPATH/mos-ipamhost >> $LOGPATH/mos_ipamhost
-fi
-
-if [[ -n "$MCCNAME" ]] ; then
-echo "Gathering MOS L2template details..."
-echo "################# [MOS L2TEMPLATE DETAILS] #################" > $LOGPATH/mos_l2template
-echo "" >> $LOGPATH/mos_l2template
-grep ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/ipam.mirantis.com/l2templates/ $LOGPATH/files > $LOGPATH/mos-l2template
-printf '## L2templates' >> $LOGPATH/mos_l2template ; printf " (Total: `wc -l < $LOGPATH/mos-l2template`)" >> $LOGPATH/mos_l2template
-echo "" >> $LOGPATH/mos_l2template
-while read -r line; do printf "# $line:"; echo ""; sed -n '/  spec:/,/    state:/p' $line; echo ""; done < $LOGPATH/mos-l2template >> $LOGPATH/mos_l2template
-fi
-
-if [[ -n "$MCCNAME" ]] ; then
-echo "Gathering MOS subnet details..."
-echo "################# [MOS SUBNET DETAILS] #################" > $LOGPATH/mos_subnet
-grep ./$MCCNAME/objects/namespaced/$MOSNAMESPACE/ipam.mirantis.com/subnets/ $LOGPATH/files > $LOGPATH/mos-subnet
-echo "" >> $LOGPATH/mos_subnet
-printf '## Subnets' >> $LOGPATH/mos_subnet ; printf " (Total: `wc -l < $LOGPATH/mos-subnet`)" >> $LOGPATH/mos_subnet
-echo "" >> $LOGPATH/mos_subnet
-while read -r line; do printf "# "; printf "$line" |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g'; done < $LOGPATH/mos-subnet >> $LOGPATH/mos_subnet
-echo "" >> $LOGPATH/mos_subnet
-while read -r line; do printf "# $line:"; echo ""; sed -n '/  status:/,/    tokenSecret:/p' $line; echo ""; done < $LOGPATH/mos-subnet >> $LOGPATH/mos_subnet
-echo "" >> $LOGPATH/mos_subnet
-fi
-
-if [[ -n "$MOSNAME" ]] && [[ -d $MOSNAME/objects/namespaced/tf ]]; then
-echo "Gathering MOS TF details..."
-echo "################# [MOS TF DETAILS] #################" > $LOGPATH/mos_tf
-grep ./$MOSNAME/objects/namespaced/tf $LOGPATH/files > $LOGPATH/mos-tf
-echo "" >> $LOGPATH/mos_tf
-echo '## TF Operator' >> $LOGPATH/mos_tf
-printf '# ' >> $LOGPATH/mos_tf; grep "/openstack-tf.yaml" $LOGPATH/files >> $LOGPATH/mos_tf
-sed -n '/  spec:/,/$p/p' $(grep "/openstack-tf.yaml" $LOGPATH/files) >> $LOGPATH/mos_tf
-echo "" >> $LOGPATH/mos_tf
-echo '## TF control logs (Errors/Warnings)' >> $LOGPATH/mos_tf
-grep tf-control- $LOGPATH/files |grep log > $LOGPATH/mos-tf-control
-while read -r line; do printf "# $line:"; echo ""; grep -E 'ERR|WARN' $line |sed -r '/^\s*$/d' ; echo ""; done < $LOGPATH/mos-tf-control >> $LOGPATH/mos_tf
-echo "" >> $LOGPATH/mos_tf
-echo '## TF config logs (Errors/Warnings)' >> $LOGPATH/mos_tf
-grep tf-config- $LOGPATH/files |grep log > $LOGPATH/mos-tf-config
-while read -r line; do printf "# $line:"; echo ""; grep -E 'ERR|WARN' $line |sed -r '/^\s*$/d' ; echo ""; done < $LOGPATH/mos-tf-config >> $LOGPATH/mos_tf
-echo "" >> $LOGPATH/mos_tf
-echo '## TF vrouter logs (Errors/Warnings)' >> $LOGPATH/mos_tf
-grep tf-vrouter- $LOGPATH/files |grep log > $LOGPATH/mos-tf-vrouter
-while read -r line; do printf "# $line:"; echo ""; grep -E 'ERR|WARN' $line |sed -r '/^\s*$/d' ; echo ""; done < $LOGPATH/mos-tf-vrouter >> $LOGPATH/mos_tf
-echo "" >> $LOGPATH/mos_tf
-echo '## TF redis logs (Errors/Warnings)' >> $LOGPATH/mos_tf
-grep tf-redis $LOGPATH/files |grep log > $LOGPATH/mos-tf-redis
-while read -r line; do printf "# $line:"; echo ""; grep -Ei 'ERR|WARN' $line |sed -r '/^\s*$/d' ; echo ""; done < $LOGPATH/mos-tf-redis >> $LOGPATH/mos_tf
-echo "" >> $LOGPATH/mos_tf
-echo '## TF cassandra-config logs (Errors/Warnings)' >> $LOGPATH/mos_tf
-grep tf-cassandra-config $LOGPATH/files |grep log > $LOGPATH/mos-tf-cassandra-config
-while read -r line; do printf "# $line:"; echo ""; grep -E 'ERR|WARN' $line |sed -r '/^\s*$/d' ; echo ""; done < $LOGPATH/mos-tf-cassandra-config >> $LOGPATH/mos_tf
-echo "" >> $LOGPATH/mos_tf
-echo '## TF cassandra-operator logs (Errors/Warnings)' >> $LOGPATH/mos_tf
-grep cassandra-operator $LOGPATH/files |grep log > $LOGPATH/mos-tf-cassandra-operator
-while read -r line; do printf "# $line:"; echo ""; grep -E 'ERR|WARN' $line |sed -r '/^\s*$/d' ; echo ""; done < $LOGPATH/mos-tf-cassandra-operator >> $LOGPATH/mos_tf
-echo "" >> $LOGPATH/mos_tf
-echo '## TF rabbitmq logs (Errors/Warnings - last 100 lines):' >> $LOGPATH/mos_tf
-grep /rabbitmq.log $LOGPATH/files > $LOGPATH/mos-tf-rabbitmq
-while read -r line; do printf "# $line:"; echo ""; grep -E '\[warning\]|\[error\]' $line |sed -r '/^\s*$/d' |tail -n 100; echo ""; done < $LOGPATH/mos-tf-rabbitmq >> $LOGPATH/mos_tf
-echo "" >> $LOGPATH/mos_tf
-fi
-
-if [[ -n "$MOSNAME" ]] ; then
-echo "Gathering MOS PV and PVC details..."
-echo "################# [MOS PV AND PVC DETAILS] #################" > $LOGPATH/mos_pv_pvc
-grep ./$MOSNAME/objects/cluster/core/persistentvolumes/ $LOGPATH/files > $LOGPATH/mos-pv
-echo "" >> $LOGPATH/mos_pv_pvc
-printf '## Persistent Volumes' >> $LOGPATH/mos_pv_pvc ; printf " (Total: `wc -l < $LOGPATH/mos-pv`)" >> $LOGPATH/mos_pv_pvc
-echo "" >> $LOGPATH/mos_pv_pvc
-while read -r line; do printf "# "; printf "$line" |awk -F "/" -v 'OFS=/' '{print $7}' |sed 's|\.yaml||g'; done < $LOGPATH/mos-pv >> $LOGPATH/mos_pv_pvc
-echo "" >> $LOGPATH/mos_pv_pvc
-while read -r line; do printf "# $line:"; echo ""; sed -n '/  spec:/,/    state:/p' $line; echo ""; done < $LOGPATH/mos-pv >> $LOGPATH/mos_pv_pvc
-echo "" >> $LOGPATH/mos_pv_pvc
-grep persistentvolumeclaims $LOGPATH/files |grep $MOSNAME > $LOGPATH/mos-pvc
-printf '## Persistent Volume Claims' >> $LOGPATH/mos_pv_pvc ; printf " (Total: `wc -l < $LOGPATH/mos-pvc`)" >> $LOGPATH/mos_pv_pvc
-echo "" >> $LOGPATH/mos_pv_pvc
-while read -r line; do printf "# "; printf "$line" |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g'; done < $LOGPATH/mos-pvc >> $LOGPATH/mos_pv_pvc
-echo "" >> $LOGPATH/mos_pv_pvc
-while read -r line; do printf "# $line:"; echo ""; sed -n '/  spec:/,/    state:/p' $line; echo ""; done < $LOGPATH/mos-pvc >> $LOGPATH/mos_pv_pvc
-fi
-
-# MCC Analysis
-if [[ -n "$MCCNAME" ]] ; then
-  echo "Gathering MCC cluster details..."
-  echo "################# [MCC CLUSTER DETAILS] #################" > $LOGPATH/mcc_cluster
-  MCCVER1=$(grep -m1 "release: kaas-" "./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml" |
- sed 's/release\: kaas\-//' | sed 's/[[:space:]]//g' |awk -F '-' '{print $1}')
-  MCCVER2=$(grep -m1 "release: kaas-" "./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml" |
- sed 's/release\: kaas\-//' | sed 's/[[:space:]]//g' |awk -F '-' '{print $2}')
-  MCCVER3=$(grep -m1 "release: kaas-" "./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml" |
- sed 's/release\: kaas\-//' | sed 's/[[:space:]]//g' |awk -F '-' '{print $3}')
-  echo "" >> $LOGPATH/mcc_cluster
-  printf "## MCC Version release details: $MCCVER1.$MCCVER2.$MCCVER3" >> $LOGPATH/mcc_cluster
-  echo "" >> $LOGPATH/mcc_cluster
-  echo "https://docs.mirantis.com/container-cloud/latest/release-notes/releases/$MCCVER1-$MCCVER2-$MCCVER3.html" >> $LOGPATH/mcc_cluster
-  echo "https://docs.mirantis.com/container-cloud/latest/release-notes/releases/$MCCVER1-$MCCVER2-$MCCVER3/known-$MCCVER1-$MCCVER2-$MCCVER3.html" >> $LOGPATH/mcc_cluster
-  echo "" >> $LOGPATH/mcc_cluster
-  printf "## MCC Bugs - $MCCVER1.$MCCVER2.$MCCVER3": >> $LOGPATH/mcc_cluster
-  echo "" >> $LOGPATH/mcc_cluster
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.23.2" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.2%20%2F%20MOSK%2023.1.1%20%28Patch%20release%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.23.3" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.3%20%2F%20MOSK%2023.1.2%20%28Patch%20release%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.23.4" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.4%20%2F%20MOSK%2023.1.3%20%28Patch%20release%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.23.5" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.23.5%20%2F%20MOSK%2023.1.4%20%28Patch%20release%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.24.3" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.3%20%2F%20MOSK%2023.2.1%20%28Patch%20release1%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.24.4" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.4%20%2F%20MOSK%2023.2.2%20%28Patch%20release2%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.24.5" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.24.5%20%2F%20MOSK%2023.2.3%20%28Patch%20release3%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.25" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.25%20%2F%20MOSK%2023.3%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.25.1" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.1%20%2F%20MOSK%2023.3.1%20%28Patch%20release1%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.25.2" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.2%20%2F%20MOSK%2023.3.2%20%28Patch%20release2%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.25.3" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.3%20%2F%20MOSK%2023.3.3%20%28Patch%20release3%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.25.4" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.25.4%20%2F%20MOSK%2023.3.4%20%28Patch%20release4%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.26" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26%20%2F%20MOSK%2024.1%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.26.1" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.1%20%2F%20MOSK%2024.1.1%20%28Patch%20release1%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.26.2" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.2%20%2F%20MOSK%2024.1.2%20%28Patch%20release2%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.26.3" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.3%20%2F%20MOSK%2024.1.3%20%28Patch%20release3%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.26.4" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.4%20%2F%20MOSK%2024.1.4%20%28Patch%20release4%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.26.5" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.26.5%20%2F%20MOSK%2024.1.5%20%28Patch%20release5%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.27" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.27%20%2F%20MOSK%2024.2%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.27.1" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.1%20%2F%20MOSK%2024.1.6%20%28Patch%20release6%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.27.2" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.2%20%2F%20MOSK%2024.1.7%20%28Patch%20release7%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.27.3" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.3%20%2F%20MOSK%2024.2.1%20%28Patch%20release1%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.27.4" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.27.4%20%2F%20MOSK%2024.2.2%20%28Patch%20release2%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.28" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.28%20%2F%20MOSK%2024.3%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.28.1" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.1%20%2F%20MOSK%2024.2.3%20%28Patch%20release3%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.28.2" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.2%20%2F%20MOSK%2024.2.4%20%28Patch%20release4%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.28.3" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.3%20%2F%20MOSK%2024.2.5%20%28Patch%20release5%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.28.4" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.4%20%2F%20MOSK%2024.3.1%20%28Patch%20release1%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.28.5" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.28.5%20%2F%20MOSK%2024.3.2%20%28Patch%20release2%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.29" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.29%20%2F%20MOSK%2025.1%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.29.1" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.1%20%2F%20MOSK%2024.3.3%20%28Patch%20release3%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.29.2" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.2%20%2F%20MOSK%2024.3.4%20%28Patch%20release4%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.29.3" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.3%20%2F%20MOSK%2024.3.5%20%28Patch%20release5%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.29.4" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.4%20%2F%20MOSK%2024.3.6%20%28Patch%20release6%29%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.29.5" ]]; then
-    echo "https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%202.29.5%20%2F%20MOSK%2024.3.7%20%28Patch%20release7%29%22" >>$LOGPATH/mcc_cluster
-  fi  
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.30" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30%20%2F%20MOSK%2025.2%22" >> $LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.30.1" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.1%20%2F%20MOSK%2025.2.1%20(Patch%20release1)%22" >> $LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.30.2" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.2%20%2F%20MOSK%2025.2.2%20(Patch%20release2)%22" >> $LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.30.3" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.3%20%2F%20MOSK%2025.2.3%20(Patch%20release3)%22" >> $LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.30.4" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.4%20%2F%20MOSK%2025.2.4%20(Patch%20release4)%22" >> $LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.30.5" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.5%20%2F%20MOSK%2025.2.5%20(Patch%20release5)%22" >> $LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.31" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31%20%2F%20MOSK%2026.1%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.31.1" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.1%20%2F%20MOSK%2025.2.6%20(Patch%20release6)%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.31.2" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.2%20%2F%20MOSK%2025.2.7%20(Patch%20release7)%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.31.3" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.3%20%2F%20MOSK%2025.2.8%20(Patch%20release8)%22" >>$LOGPATH/mcc_cluster
-  fi
-  if [[ "$MCCVER1.$MCCVER2.$MCCVER3" == "2.31.4" ]]; then
-    echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.4%20%2F%20MOSK%2025.2.9%20(Patch%20release9)%22" >>$LOGPATH/mcc_cluster
-  fi
-  echo "" >> $LOGPATH/mcc_cluster
-  MKEVER1=$(grep -m1 "release: mke-" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml |
- sed 's/release\: mke\-//' | sed 's/[[:space:]]//g' |awk -F '-' '{print $1}')
-  MKEVER2=$(grep -m1 "release: mke-" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml |
- sed 's/release\: mke\-//' | sed 's/[[:space:]]//g' |awk -F '-' '{print $2}')
-  MKEVER3=$(grep -m1 "release: mke-" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml |
- sed 's/release\: mke\-//' | sed 's/[[:space:]]//g' |awk -F '-' '{print $3}')
-  MKEVER4=$(grep -m1 "release: mke-" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml |
- sed 's/release\: mke\-//' | sed 's/[[:space:]]//g' |awk -F '-' '{print $4}')
-  MKEVER5=$(grep -m1 "release: mke-" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml |
- sed 's/release\: mke\-//' | sed 's/[[:space:]]//g' |awk -F '-' '{print $5}')
-  MKEVER6=$(grep -m1 "release: mke-" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml |
- sed 's/release\: mke\-//' | sed 's/[[:space:]]//g' |awk -F '-' '{print $6}')
-  printf "## MKE Version release details: $MKEVER4.$MKEVER5.$MKEVER6" >> $LOGPATH/mcc_cluster
-  echo "" >> $LOGPATH/mcc_cluster
-  echo "https://docs.mirantis.com/mke/$MKEVER4.$MKEVER5/release-notes/$MKEVER4-$MKEVER5-$MKEVER6.html" >> $LOGPATH/mcc_cluster
-  echo "https://docs.mirantis.com/mke/$MKEVER4.$MKEVER5/release-notes/$MKEVER4-$MKEVER5-$MKEVER6/known-issues.html" >> $LOGPATH/mcc_cluster
-  echo "" >> $LOGPATH/mcc_cluster
-  echo "## Details and versions:" >> $LOGPATH/mcc_cluster
-  printf '# ' >> $LOGPATH/mcc_cluster; ls ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml >> $LOGPATH/mcc_cluster
-  grep -E "release: kaas-|release: mke-|      - message" ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml >> $LOGPATH/mcc_cluster
-  sed -n '/          stacklight:/,/      kind:/p' ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml >> $LOGPATH/mcc_cluster
-  echo "" >> $LOGPATH/mcc_cluster
-  echo "## LCM status:" >> $LOGPATH/mcc_cluster
-  printf '# ' >> $LOGPATH/mcc_cluster; ls ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/lcm.mirantis.com/lcmclusters/$MCCNAME.yaml >> $LOGPATH/mcc_cluster
-  sed -n '/  status:/,/    requestedNodes:/p' ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/lcm.mirantis.com/lcmclusters/$MCCNAME.yaml >> $LOGPATH/mcc_cluster
-fi
-
-if [[ -n "$MCCNAME" ]] ; then
-echo "Gathering MCC events..."
-echo "################# [MCC EVENTS (WARNING+ERRORS)] #################" > $LOGPATH/mcc_events
-echo "" >> $LOGPATH/mcc_events
-echo "## Analyzed files:" >> $LOGPATH/mcc_events
-printf '# ' >> $LOGPATH/mcc_events; ls ./$MCCNAME/objects/events.log >> $LOGPATH/mcc_events
-grep -E "Warning|Error" ./$MCCNAME/objects/events.log |sort -M >> $LOGPATH/mcc_events
-fi
-
-if [[ -n "$MCCNAME" ]] ; then
-echo "Gathering MCC node details..."
-echo "################# [MCC NODE DETAILS] #################" > $LOGPATH/mcc_nodes
-echo "" >> $LOGPATH/mcc_nodes
-grep "/core/nodes" $LOGPATH/files |grep $MCCNAME > $LOGPATH/mcc-nodes
-printf "## Nodes" >> $LOGPATH/mcc_nodes ; printf " (Total: `wc -l < $LOGPATH/mcc-nodes`)" >> $LOGPATH/mcc_nodes
-echo "" >> $LOGPATH/mcc_nodes
-while read -r line; do printf '# '; printf "$line" |awk -F "/" -v 'OFS=/' '{print $7}' |sed 's|\.yaml||g'; done < $LOGPATH/mcc-nodes >> $LOGPATH/mcc_nodes
-while read -r line; do echo ""; printf "# $line:"; echo ""; grep -E "      kaas.mirantis.com/machine-name:" $line; sed -n '/    nodeInfo:/,/      systemUUID:/p' $line; sed -n '/    conditions:/,/    daemonEndpoints:/p' $line |head -n 1; done < $LOGPATH/mcc-nodes >> $LOGPATH/mcc_nodes
-fi
-
-if [[ -n "$MCCNAME" ]] ; then
-echo "Gathering MCC LCM machine details..."
-echo "################# [MCC LCM MACHINE DETAILS] #################" > $LOGPATH/mcc_lcmmachine
-grep ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/lcm.mirantis.com/lcmmachines $LOGPATH/files > $LOGPATH/mcc-lcmmachine
-echo "" >> $LOGPATH/mcc_lcmmachine
-printf '## Machines' >> $LOGPATH/mcc_lcmmachine ; printf " (Total: `wc -l < $LOGPATH/mcc-lcmmachine`)" >> $LOGPATH/mcc_lcmmachine
-echo "" >> $LOGPATH/mcc_lcmmachine
-while read -r line; do printf "# "; printf "$line" |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g'; done < $LOGPATH/mcc-lcmmachine >> $LOGPATH/mcc_lcmmachine
-echo "" >> $LOGPATH/mcc_lcmmachine
-while read -r line; do printf "# $line:"; echo ""; sed -n '/  status:/,/    tokenSecret:/p' $line; echo ""; done < $LOGPATH/mcc-lcmmachine >> $LOGPATH/mcc_lcmmachine
-echo "" >> $LOGPATH/mcc_lcmmachine
-fi
-
-if [[ -n "$MCCNAME" ]] ; then
-echo "Gathering MCC Mariadb details and logs..."
-echo "################# [MCC MARIADB DETAILS] #################" > $LOGPATH/mcc_mariadb
-echo "" >> $LOGPATH/mcc_mariadb
-echo "## Configmap:" >> $LOGPATH/mcc_mariadb
-printf '# ' >> $LOGPATH/mcc_mariadb; ls ./$MCCNAME/objects/namespaced/kaas/core/configmaps/iam-mariadb-state.yaml >> $LOGPATH/mcc_mariadb
-sed -n '/  data:/,/    creationTimestamp:/p' ./$MCCNAME/objects/namespaced/kaas/core/configmaps/iam-mariadb-state.yaml >> $LOGPATH/mcc_mariadb
-echo "" >> $LOGPATH/mcc_mariadb
-echo "## Logs from controller pod (Errors/Warnings):" >> $LOGPATH/mcc_mariadb
-printf '# ' >> $LOGPATH/mcc_mariadb; ls ./$MCCNAME/objects/namespaced/kaas/core/pods/mariadb-controller-*/controller.log >> $LOGPATH/mcc_mariadb
-grep -iE 'error|fail|warn' ./$MCCNAME/objects/namespaced/kaas/core/pods/mariadb-controller-*/controller.log |sed -r '/^\s*$/d' >> $LOGPATH/mcc_mariadb
-echo "" >> $LOGPATH/mcc_mariadb
-echo "## Logs from server-0 pods (Errors/Warnings):" >> $LOGPATH/mcc_mariadb
-printf '# ' >> $LOGPATH/mcc_mariadb; ls ./$MCCNAME/objects/namespaced/kaas/core/pods/mariadb-server-0/mariadb.log >> $LOGPATH/mcc_mariadb
-grep -E 'ERR|WARN' ./$MCCNAME/objects/namespaced/kaas/core/pods/mariadb-server-0/mariadb.log |sed -r '/^\s*$/d'  >> $LOGPATH/mcc_mariadb
-echo "" >> $LOGPATH/mcc_mariadb
-echo "## Logs from server-1 pods (Errors/Warnings):" >> $LOGPATH/mcc_mariadb
-printf '# ' >> $LOGPATH/mcc_mariadb; ls ./$MCCNAME/objects/namespaced/kaas/core/pods/mariadb-server-1/mariadb.log >> $LOGPATH/mcc_mariadb
-grep -E 'ERR|WARN' ./$MCCNAME/objects/namespaced/kaas/core/pods/mariadb-server-1/mariadb.log |sed -r '/^\s*$/d'  >> $LOGPATH/mcc_mariadb
-echo "" >> $LOGPATH/mcc_mariadb
-echo "## Logs from server-2 pods (Errors/Warnings):" >> $LOGPATH/mcc_mariadb
-printf '# ' >> $LOGPATH/mcc_mariadb; ls ./$MCCNAME/objects/namespaced/kaas/core/pods/mariadb-server-2/mariadb.log >> $LOGPATH/mcc_mariadb
-grep -E 'ERR|WARN' ./$MCCNAME/objects/namespaced/kaas/core/pods/mariadb-server-2/mariadb.log |sed -r '/^\s*$/d'  >> $LOGPATH/mcc_mariadb
+  OUT="$LOGPATH/mos_mariadb"; echo "################# [MOS MARIADB DETAILS] #################" >"$OUT"
+  ls $MOS_DIR/objects/namespaced/openstack/core/configmaps/openstack-mariadb-mariadb-state.yaml 2>/dev/null >>"$OUT"
+  grep -iE 'error|fail|warn' $MOS_DIR/objects/namespaced/openstack/core/pods/mariadb-controller-*/controller.log 2>/dev/null | sed -E '/^\s*$/d' >>"$OUT"
 fi
 
 if [[ -n "$MCCNAME" ]]; then
-  echo "Gathering MCC certificates..."
-  echo "################# [MCC CERTIFICATE DETAILS] #################" >$LOGPATH/mcc_certs
-  echo "" >>$LOGPATH/mcc_certs
-  echo "## UI certificates:" >>$LOGPATH/mcc_certs
-  printf '# ' >>$LOGPATH/mcc_certs
-  ls ./$MCCNAME/objects/namespaced/kaas/core/secrets/ui-tls-certs.yaml >>$LOGPATH/mcc_certs
-  audit_k8s_secret "./$MCCNAME/objects/namespaced/kaas/core/secrets/ui-tls-certs.yaml" >>$LOGPATH/mcc_certs
-  printf '# ' >>$LOGPATH/mcc_certs
-  ls ./$MCCNAME/objects/namespaced/kaas/core/secrets/mcc-ca-cert.yaml >>$LOGPATH/mcc_certs
-  audit_k8s_secret "./$MCCNAME/objects/namespaced/kaas/core/secrets/mcc-ca-cert.yaml" >>$LOGPATH/mcc_certs
-  echo "" >>$LOGPATH/mcc_certs
-  echo "## Keycloak certificates:" >>$LOGPATH/mcc_certs
-  printf '# ' >>$LOGPATH/mcc_certs
-  ls ./$MCCNAME/objects/namespaced/kaas/core/secrets/keycloak-tls-certs.yaml >>$LOGPATH/mcc_certs
-  audit_k8s_secret "./$MCCNAME/objects/namespaced/kaas/core/secrets/keycloak-tls-certs.yaml" >>$LOGPATH/mcc_certs
-  echo "## OIDC certificates:" >>$LOGPATH/mcc_certs
-  printf '# ' >>$LOGPATH/mcc_certs
-  ls ./$MCCNAME/objects/namespaced/kaas/core/secrets/oidc-ca-cert.yaml >>$LOGPATH/mcc_certs
-  audit_k8s_secret "./$MCCNAME/objects/namespaced/kaas/core/secrets/oidc-ca-cert.yaml" >>$LOGPATH/mcc_certs
-  echo "## Policy controller certificates:" >>$LOGPATH/mcc_certs
-  printf '# ' >>$LOGPATH/mcc_certs
-  ls ./$MCCNAME/objects/namespaced/kaas/core/secrets/policy-tls-certs.yaml >>$LOGPATH/mcc_certs
-  audit_k8s_secret "./$MCCNAME/objects/namespaced/kaas/core/secrets/policy-tls-certs.yaml" >>$LOGPATH/mcc_certs
+  OUT="$LOGPATH/mcc_cluster"; echo "################# [MCC CLUSTER DETAILS] #################" >"$OUT"
+  yq eval '.Object.status // .status' "$MCC_DIR/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml" 2>/dev/null >>"$OUT"
+  
+  OUT="$LOGPATH/mcc_license_releases"; echo "################# [LICENSE & RELEASES] #################" >"$OUT"
+  yq eval '.Object.status // .status' $(find "$MCC_DIR" -name "license.yaml") 2>/dev/null >>"$OUT"
+  ls "$MCC_DIR/objects/cluster/kaas.mirantis.com/kaasreleases/" 2>/dev/null >>"$OUT"
 fi
 
-if [[ -n "$MCCNAME" ]] ; then
-echo "Gathering MCC Ipamhost details..."
-echo "################# [MCC IPAMHOST DETAILS] #################" > $LOGPATH/mcc_ipamhost
-echo "" >> $LOGPATH/mcc_ipamhost
-grep ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/ipam.mirantis.com/ipamhosts/ $LOGPATH/files > $LOGPATH/mcc-ipamhost
-printf '## Ipamhosts' >> $LOGPATH/mcc_ipamhost ; printf " (Total: `wc -l < $LOGPATH/mcc-ipamhost`)" >> $LOGPATH/mcc_ipamhost
-echo "" >> $LOGPATH/mcc_ipamhost
-while read -r line; do printf "# "; printf "$line" |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g'; done < $LOGPATH/mcc-ipamhost >> $LOGPATH/mcc_ipamhost
-echo "" >> $LOGPATH/mcc_ipamhost
-while read -r line; do printf "# $line:"; echo ""; sed -n '/  spec:/,/    state:/p' $line; echo ""; done < $LOGPATH/mcc-ipamhost >> $LOGPATH/mcc_ipamhost
-fi
+for c in "mcc" "mos"; do
+  D="${c^^}_DIR"; [[ -n "${!D}" ]] || continue
+  OUT="$LOGPATH/${c}_failed_pods"; echo "################# [${c^^} FAILED PODS] #################" >"$OUT"
+  find "${!D}" -path "*/core/pods/*.yaml" | while read -r f; do
+    P=$(yq eval '.Object.status.phase // .status.phase' "$f" 2>/dev/null)
+    [[ "$P" != "Running" && "$P" != "Succeeded" ]] && {
+      echo "### $(basename "$f" .yaml) ($P)" >>"$OUT"
+      tail -n 150 "${f%.yaml}"/*.log >>"$OUT" 2>/dev/null
+    }
+  done
+done
 
-if [[ -n "$MCCNAME" ]] ; then
-echo "Gathering MCC L2template details..."
-echo "################# [MCC L2TEMPLATE DETAILS] #################" > $LOGPATH/mcc_l2template
-echo "" >> $LOGPATH/mcc_l2template
-grep ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/ipam.mirantis.com/l2templates/ $LOGPATH/files > $LOGPATH/mcc-l2template
-printf '## L2 templates' >> $LOGPATH/mcc_l2template ; printf " (Total: `wc -l < $LOGPATH/mcc-l2template`)" >> $LOGPATH/mcc_l2template
-echo "" >> $LOGPATH/mcc_l2template
-while read -r line; do printf "# $line:"; echo ""; sed -n '/  spec:/,/    state:/p' $line; echo ""; done < $LOGPATH/mcc-l2template >> $LOGPATH/mcc_l2template
-fi
-
-if [[ -n "$MCCNAME" ]] ; then
-echo "Gathering MCC subnet details..."
-echo "################# [MCC SUBNET DETAILS] #################" > $LOGPATH/mcc_subnet
-grep ./$MCCNAME/objects/namespaced/$MCCNAMESPACE/ipam.mirantis.com/subnets/ $LOGPATH/files > $LOGPATH/mcc-subnet
-echo "" >> $LOGPATH/mcc_subnet
-printf '## Subnets' >> $LOGPATH/mcc_subnet ; printf " (Total: `wc -l < $LOGPATH/mcc-subnet`)" >> $LOGPATH/mcc_subnet
-echo "" >> $LOGPATH/mcc_subnet
-while read -r line; do printf "# "; printf "$line" |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g'; done < $LOGPATH/mcc-subnet >> $LOGPATH/mcc_subnet
-echo "" >> $LOGPATH/mcc_subnet
-while read -r line; do printf "# $line:"; echo ""; sed -n '/  status:/,/    tokenSecret:/p' $line; echo ""; done < $LOGPATH/mcc-subnet >> $LOGPATH/mcc_subnet
-echo "" >> $LOGPATH/mcc_subnet
-fi
-
-if [[ -n "$MCCNAME" ]] ; then
-echo "Gathering MCC PV and PVC details..."
-echo "################# [MCC PV AND PVC DETAILS] #################" > $LOGPATH/mcc_pv_pvc
-grep ./$MCCNAME/objects/cluster/core/persistentvolumes/ $LOGPATH/files > $LOGPATH/mcc-pv
-echo "" >> $LOGPATH/mcc_pv_pvc
-printf '## Persistent Volumes' >> $LOGPATH/mcc_pv_pvc ; printf " (Total: `wc -l < $LOGPATH/mcc-pv`)" >> $LOGPATH/mcc_pv_pvc
-echo "" >> $LOGPATH/mcc_pv_pvc
-while read -r line; do printf "# "; printf "$line" |awk -F "/" -v 'OFS=/' '{print $7}' |sed 's|\.yaml||g'; done < $LOGPATH/mcc-pv >> $LOGPATH/mcc_pv_pvc
-echo "" >> $LOGPATH/mcc_pv_pvc
-while read -r line; do printf "# $line:"; echo ""; sed -n '/  spec:/,/    state:/p' $line; echo ""; done < $LOGPATH/mcc-pv >> $LOGPATH/mcc_pv_pvc
-echo "" >> $LOGPATH/mcc_pv_pvc
-grep persistentvolumeclaims $LOGPATH/files |grep $MCCNAME > $LOGPATH/mcc-pvc
-printf '## Persistent Volume Claims' >> $LOGPATH/mcc_pv_pvc ; printf " (Total: `wc -l < $LOGPATH/mcc-pvc`)" >> $LOGPATH/mcc_pv_pvc   
-echo "" >> $LOGPATH/mcc_pv_pvc
-while read -r line; do printf "# "; printf "$line" |awk -F "/" -v 'OFS=/' '{print $8}' |sed 's|\.yaml||g'; done < $LOGPATH/mcc-pvc >> $LOGPATH/mcc_pv_pvc
-echo "" >> $LOGPATH/mcc_pv_pvc
-while read -r line; do printf "# $line:"; echo ""; sed -n '/  spec:/,/    state:/p' $line; echo ""; done < $LOGPATH/mcc-pvc >> $LOGPATH/mcc_pv_pvc
-fi
-
-if [[ -n "$MCCNAME" ]] || [[ -n "$MOSNAME" ]] ; then
-# Delete temporary files generated:
-echo "Removing temp files..."
-rm $LOGPATH/*-* 2> /dev/null
-
-# Rename report files to .yaml so text editors can recognise the syntax
-echo "Converting report files to yaml..."
-for file in $LOGPATH/*_*; do mv $file $file.yaml; done
-
-echo "Report Complete. Opening files..."
-# Run nvim to load all files:
-#nvim -R -c 'silent argdo set syntax=yaml' -p $LOGPATH/*_*
-#nvim -R -p $LOGPATH/*.yaml
-
-# Run sublime text to load all files:
-/Applications/Sublime\ Text.app/Contents/SharedSupport/bin/subl --new-window --command $LOGPATH/*.yaml 2> /dev/null
-fi
-
-if [[ -z "$MCCNAME" ]] && [[ -z "$MOSNAME" ]] ; then
-# Delete myrha folder as neither MCC and MOS clusters were found:
-rm -rf $LOGPATH 2> /dev/null
+# --- DASHBOARD GENERATION ---
+if [[ -n "$MCCNAME" ]] || [[ -n "$MOSNAME" ]]; then
+  for f in "$LOGPATH"/*_*.yaml; do
+    [[ -e "$f" ]] || mv "${f%.yaml}" "$f" 2>/dev/null
+  done
+  for f in $(ls "$LOGPATH"/*_*.yaml 2>/dev/null | sort); do
+    T=$(basename "$f" .yaml | tr '_' ' ' | tr '[:lower:]' '[:upper:]')
+    A=$(echo "$T" | tr ' ' '-')
+    [[ "$(basename "$f")" == mcc_* ]] && C="mcc" || C="mos"
+    echo "<li data-category='$C'><a href='#$A'>$T</a></li>" >>"$HTML_REPORT"
+  done
+  printf "</ul></nav><main class='main-content'>" >>"$HTML_REPORT"
+  cat <<EOF >>"$HTML_REPORT"
+<button class="toggle-sidebar-btn" onclick="toggleSidebar()">◀</button>
+<div class="header"><h1>Mirantis Diagnostic Dashboard (macOS)</h1><p>Generated: $DATE</p></div>
+EOF
+  for f in $(ls "$LOGPATH"/*_*.yaml 2>/dev/null | sort); do
+    T=$(basename "$f" .yaml | tr '_' ' ' | tr '[:lower:]' '[:upper:]')
+    A=$(echo "$T" | tr ' ' '-')
+    { echo "<div class='card' id='$A'><h2>$T<div class='card-header-actions'><span class='btn-tool' onclick=\"toggleFullScreen(this, '$A')\">Full Screen</span><span class='btn-tool btn-copy' onclick=\"copyToClipboard(this, '$A')\">Copy</span><span class='btn-tool wrap-btn' onclick=\"toggleBlockWrap(this, '$A')\">Wrap: OFF</span></div></h2><pre class='language-yaml raw-code'><code>"; sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' "$f"; echo "</code></pre></div>"; } >>"$HTML_REPORT"
+  done
+  printf "</main><script src='https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js' data-manual></script><script src='https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js'></script></body></html>" >>"$HTML_REPORT"
+  echo "✅ Dashboard ready: $HTML_REPORT"; open "$HTML_REPORT" 2>/dev/null
 fi
