@@ -147,18 +147,3 @@ or these ones for vim:<br>
 #nvim -R -c 'silent argdo set syntax=yaml' -p $LOGPATH/*_*
 #nvim -R -p $LOGPATH/*.yaml
 ```
-
-
-
-By default, the script is set to automatically open Sublime text with all files generated. You can also open them up on vim by commenting the following lines:<br>
-
-```
-/Applications/Sublime\ Text.app/Contents/SharedSupport/bin/subl --new-window --command $LOGPATH/*.yaml 2> /dev/null
-```
-
-and uncommenting the following ones:<br>
-
-```
-#nvim -R -c 'silent argdo set syntax=yaml' -p $LOGPATH/*_*
-#nvim -R -p $LOGPATH/*.yaml
-```
