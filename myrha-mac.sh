@@ -406,10 +406,11 @@ find "$BASE_DIR" -not -path "$LOGPATH/*" -type f >"$LOGPATH/files"
 
 # Discover MCC and MOS cluster directories
 MCC_DIR=$(find "$BASE_DIR" -type d -name "kaas-mgmt" | head -n 1)
-MOS_DIR=$(find "$BASE_DIR" -type d -name "mos" | head -n 1)
+# Refined discovery to avoid including 'objects' in the root if already present
+MOS_DIR=$(find "$BASE_DIR" -type d -name "mos" -not -path "*/objects/*" | head -n 1)
 
 if [[ -n "$MCC_DIR" ]]; then
-  MCC_FILE=$(ls "$MCC_DIR"/objects/namespaced/default/cluster.k8s.io/clusters/*.yaml 2>/dev/null | head -n 1)
+  MCC_FILE=$(find "$MCC_DIR" -path "*/default/cluster.k8s.io/clusters/*.yaml" 2>/dev/null | head -n 1)
   if [[ -f "$MCC_FILE" ]]; then
     MCCNAME=$(yq eval '.Object.metadata.name // .metadata.name' "$MCC_FILE" 2>/dev/null)
     MCCNAMESPACE=$(yq eval '.Object.metadata.namespace // .metadata.namespace' "$MCC_FILE" 2>/dev/null)
@@ -417,11 +418,17 @@ if [[ -n "$MCC_DIR" ]]; then
 fi
 
 if [[ -n "$MOS_DIR" ]]; then
+  # If MOS_DIR is inside kaas-mgmt/objects/namespaced/mos, it's NOT the root MOS log dir
+  if [[ "$MOS_DIR" == *"kaas-mgmt/objects/namespaced/mos"* ]]; then
+     # Try to find the actual standalone 'mos' directory
+     REAL_MOS=$(find "$BASE_DIR" -type d -name "mos" -not -path "*kaas-mgmt*" | head -n 1)
+     [[ -n "$REAL_MOS" ]] && MOS_DIR="$REAL_MOS"
+  fi
   MOSNAME=$(basename "$MOS_DIR")
 fi
 
 if [[ -n "$MCCNAME" && -n "$MOS_DIR" ]]; then
-  MOS_CLUSTER_FILE=$(ls "$MCC_DIR"/objects/namespaced/*/cluster.k8s.io/clusters/*.yaml 2>/dev/null | grep -v default | head -n 1)
+  MOS_CLUSTER_FILE=$(find "$MCC_DIR" -path "*/cluster.k8s.io/clusters/*.yaml" 2>/dev/null | grep -v default | head -n 1)
   if [[ -f "$MOS_CLUSTER_FILE" ]]; then
     MOSNAMESPACE=$(yq eval '.Object.metadata.namespace // .metadata.namespace' "$MOS_CLUSTER_FILE" 2>/dev/null)
   fi
@@ -430,7 +437,7 @@ if [[ -n "$MOSNAME" ]]; then
   OUT="$LOGPATH/mos_cluster"
   echo "Gathering MOS cluster details..."
   echo "################# [MOS CLUSTER DETAILS] #################" >"$OUT"
-  MOS_STATUS_FILE=$(ls $MOS_DIR/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml 2>/dev/null | head -n 1)
+  MOS_STATUS_FILE=$(find "$MOS_DIR" -path "*/lcm.mirantis.com/openstackdeploymentstatus/*.yaml" 2>/dev/null | head -n 1)
   if [[ -n "$MOS_STATUS_FILE" ]]; then
     # Unified split for MOS (e.g., 21.0.0+25.2.9)
     REL_RAW=$(grep -m1 "    release: " "$MOS_STATUS_FILE" | sed -e 's/.*release: //' -e 's/[[:space:]]//g' -e 's/+/./g')
@@ -524,9 +531,11 @@ if [[ -n "$MOSNAME" ]]; then
   echo "################# [MOS EVENTS (WARNING+ERRORS)] #################" >"$OUT"
   echo "" >>"$OUT"
   echo "## Analyzed files:" >>"$OUT"
-  printf '# ' >>"$OUT"
-  ls $MOS_DIR/objects/events.log >>"$OUT"
-  grep -E "Warning|Error" $MOS_DIR/objects/events.log | sort -M >>"$OUT"
+  EVENTS_LOG=$(find "$MOS_DIR" -name "events.log" 2>/dev/null | head -n 1)
+  if [[ -f "$EVENTS_LOG" ]]; then
+    echo "# $EVENTS_LOG:" >>"$OUT"
+    grep -E "Warning|Error" "$EVENTS_LOG" | sort -M >>"$OUT"
+  fi
 fi
 if [[ -n "$MOSNAME" ]]; then
   OUT="$LOGPATH/mos_nodes"
@@ -600,9 +609,11 @@ if [[ -n "$MOSNAME" ]]; then
   echo "################# [MOS CEPH CONTROL DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
   echo "## Rook-ceph details:" >>"$OUT"
-  printf '# ' >>"$OUT"
-  ls $MOS_DIR/objects/namespaced/rook-ceph/ceph.rook.io/cephclusters/rook-ceph.yaml >>"$OUT"
-  sed -n '/    ceph:/,/    version:/p' "$MOS_DIR/objects/namespaced/rook-ceph/ceph.rook.io/cephclusters/rook-ceph.yaml" | head -n -1 >>"$OUT"
+  ROOK_CEPH=$(find "$MOS_DIR" -path "*/rook-ceph/ceph.rook.io/cephclusters/rook-ceph.yaml" 2>/dev/null | head -n 1)
+  if [[ -f "$ROOK_CEPH" ]]; then
+    echo "# $ROOK_CEPH:" >>"$OUT"
+    sed -n '/    ceph:/,/    version:/p' "$ROOK_CEPH" | sed '$d' >>"$OUT"
+  fi
   echo "" >>"$OUT"
   echo "## Mgr node logs (Warnings/Errors):" >>"$OUT"
   grep "/mgr.log" $LOGPATH/files >$LOGPATH/ceph-mgr
@@ -642,14 +653,18 @@ if [[ -n "$MOSNAME" ]]; then
   echo "################# [MOS OPENSTACK OSDPL DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
   echo "## OSDPL LCM status details:" >>"$OUT"
-  printf '# ' >>"$OUT"
-  ls $MOS_DIR/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml >>"$OUT"
-  sed -n '/    osdpl:/,/    services:/p' $MOS_DIR/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml | head -n -1 >>"$OUT"
+  OSDPL_STATUS=$(find "$MOS_DIR" -path "*/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml" 2>/dev/null | head -n 1)
+  if [[ -f "$OSDPL_STATUS" ]]; then
+    echo "# $OSDPL_STATUS:" >>"$OUT"
+    sed -n '/    osdpl:/,/    services:/p' "$OSDPL_STATUS" | sed '$d' >>"$OUT"
+  fi
   echo "" >>"$OUT"
   echo "## OSDPL details:" >>"$OUT"
-  printf '# ' >>"$OUT"
-  ls $MOS_DIR/objects/namespaced/openstack/lcm.mirantis.com/openstackdeployments/*.yaml >>"$OUT"
-  sed -n '/  spec:/,/  status:/p' $MOS_DIR/objects/namespaced/openstack/lcm.mirantis.com/openstackdeployments/*.yaml | head -n -1 >>"$OUT"
+  OSDPL=$(find "$MOS_DIR" -path "*/openstack/lcm.mirantis.com/openstackdeployments/*.yaml" 2>/dev/null | head -n 1)
+  if [[ -f "$OSDPL" ]]; then
+    echo "# $OSDPL:" >>"$OUT"
+    sed -n '/  spec:/,/  status:/p' "$OSDPL" | sed '$d' >>"$OUT"
+  fi
   echo "" >>"$OUT"
 fi
 
@@ -796,29 +811,29 @@ if [[ -n "$MOSNAME" ]]; then
   echo "################# [MOS MARIADB DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
   echo "## Configmap:" >>"$OUT"
-  printf '# ' >>"$OUT"
-  ls $MOS_DIR/objects/namespaced/openstack/core/configmaps/openstack-mariadb-mariadb-state.yaml >>"$OUT"
-  sed -n '/  data:/,/    creationTimestamp:/p' $MOS_DIR/objects/namespaced/openstack/core/configmaps/openstack-mariadb-mariadb-state.yaml >>"$OUT"
+  MARIADB_CM=$(find "$MOS_DIR" -name "openstack-mariadb-mariadb-state.yaml" 2>/dev/null | head -n 1)
+  if [[ -f "$MARIADB_CM" ]]; then
+    echo "# $MARIADB_CM:" >>"$OUT"
+    sed -n '/  data:/,/    creationTimestamp:/p' "$MARIADB_CM" >>"$OUT"
+  fi
   echo "" >>"$OUT"
   echo "## Logs from controller pod (Errors/Warnings):" >>"$OUT"
-  printf '# ' >>"$OUT"
-  ls $MOS_DIR/objects/namespaced/openstack/core/pods/mariadb-controller-*/controller.log >>"$OUT"
-  grep -iE 'error|fail|warn' $MOS_DIR/objects/namespaced/openstack/core/pods/mariadb-controller-*/controller.log | sed -E '/^[[:space:]]*$/d' >>"$OUT"
+  CONTROLLER_LOG=$(find "$MOS_DIR" -path "*/mariadb-controller-*/controller.log" 2>/dev/null | head -n 1)
+  if [[ -f "$CONTROLLER_LOG" ]]; then
+    echo "# $CONTROLLER_LOG:" >>"$OUT"
+    grep -iE 'error|fail|warn' "$CONTROLLER_LOG" | sed -E '/^[[:space:]]*$/d' >>"$OUT"
+  fi
   echo "" >>"$OUT"
-  echo "## Logs from server-0 pods (Errors/Warnings):" >>"$OUT"
-  printf '# ' >>"$OUT"
-  ls $MOS_DIR/objects/namespaced/openstack/core/pods/mariadb-server-0/mariadb.log >>"$OUT"
-  awk '/ERR|WARN/ && !/WARNING - Collision writing configmap/ && NF' "$MOS_DIR/objects/namespaced/openstack/core/pods/mariadb-server-2/mariadb.log" >>"$OUT"
-  echo "" >>"$OUT"
-  echo "## Logs from server-1 pods (Errors/Warnings):" >>"$OUT"
-  printf '# ' >>"$OUT"
-  ls $MOS_DIR/objects/namespaced/openstack/core/pods/mariadb-server-1/mariadb.log >>"$OUT"
-  awk '/ERR|WARN/ && !/WARNING - Collision writing configmap/ && NF' "$MOS_DIR/objects/namespaced/openstack/core/pods/mariadb-server-2/mariadb.log" >>"$OUT"
-  echo "" >>"$OUT"
-  echo "## Logs from server-2 pods (Errors/Warnings):" >>"$OUT"
-  printf '# ' >>"$OUT"
-  ls $MOS_DIR/objects/namespaced/openstack/core/pods/mariadb-server-2/mariadb.log >>"$OUT"
-  awk '/ERR|WARN/ && !/WARNING - Collision writing configmap/ && NF' "$MOS_DIR/objects/namespaced/openstack/core/pods/mariadb-server-2/mariadb.log" >>"$OUT"
+  
+  for i in 0 1 2; do
+    echo "## Logs from server-$i pods (Errors/Warnings):" >>"$OUT"
+    SERVER_LOG=$(find "$MOS_DIR" -path "*/mariadb-server-$i/mariadb.log" 2>/dev/null | head -n 1)
+    if [[ -f "$SERVER_LOG" ]]; then
+      echo "# $SERVER_LOG:" >>"$OUT"
+      awk '/ERR|WARN/ && !/WARNING - Collision writing configmap/ && NF' "$SERVER_LOG" >>"$OUT"
+    fi
+    echo "" >>"$OUT"
+  done
 fi
 if [[ -n "$MCCNAME" ]]; then
   OUT="$LOGPATH/mos_ipamhost"
