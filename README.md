@@ -4,6 +4,9 @@
 Summarize supportdump files from Mirantis MCC/MOS clusters<br>
 
 # Features
+- ***Graphical dashboard for easy analyzis:***
+<img width="1798" height="909" alt="Screenshot From 2026-03-09 16-01-14" src="https://github.com/user-attachments/assets/a9f80518-2139-4871-b38f-06fd4aee1b20" />
+
 - ***MKE, MOS and MCC cluster summary with a directly link to release notes and Jira tickets. Example:***
 ```
 ################# [MCC CLUSTER DETAILS] #################
@@ -139,4 +142,3 @@ and uncommenting the following ones:<br>
 #nvim -R -c 'silent argdo set syntax=yaml' -p $LOGPATH/*_*
 #nvim -R -p $LOGPATH/*.yaml
 ```
-
