@@ -134,6 +134,46 @@ cat <<EOF >"$HTML_REPORT"
         <ul id="sidebarList">
 EOF
 
+# --- IP Overlap Check Function ---
+check_overlaps() {
+  python3 - <<EOF
+import ipaddress
+import sys
+
+def parse_range(r):
+    r = r.strip()
+    if not r or r == "None" or r == "null": return []
+    try:
+        if '-' in r:
+            start, end = r.split('-')
+            return list(ipaddress.summarize_address_range(
+                ipaddress.ip_address(start.strip()), 
+                ipaddress.ip_address(end.strip())
+            ))
+        return [ipaddress.ip_network(r, strict=False)]
+    except Exception as e:
+        return []
+
+lines = sys.stdin.readlines()
+networks = []
+for line in lines:
+    for item in line.replace('[','').replace(']','').split(','):
+        networks.extend(parse_range(item))
+
+overlaps = []
+for i in range(len(networks)):
+    for j in range(i + 1, len(networks)):
+        if networks[i].overlaps(networks[j]):
+            overlaps.append(f"Overlap: {networks[i]} <-> {networks[j]}")
+
+if overlaps:
+    print("\n🛑 ALERT: IP RANGE OVERLAPS DETECTED!")
+    for o in set(overlaps): print(o)
+else:
+    print("\n✅ No IP overlaps detected in this audit.")
+EOF
+}
+
 # --- Cert audit function (macOS native) ---
 audit_k8s_secret() {
   local YAML_FILE="$1"
@@ -212,6 +252,47 @@ for c in "mcc" "mos"; do
       tail -n 150 "${f%.yaml}"/*.log >>"$OUT" 2>/dev/null
     }
   done
+done
+
+# --- NETWORKING AUDIT (MCC/MOS) ---
+for cluster in "mcc" "mos"; do
+  DIR_VAR="${cluster^^}_DIR"
+  [[ -n "${!DIR_VAR}" ]] || continue
+  OUT="$LOGPATH/${cluster}_networking_audit"
+  echo "################# [${cluster^^} NETWORKING AUDIT] #################" >"$OUT"
+  
+  # 1. Audit Subnets
+  echo "## IPAM SUBNETS (Ranges Resume):" >>"$OUT"
+  grep "$cluster" "$LOGPATH/files" | grep "ipam.mirantis.com/subnets/" | while read -r f; do
+    if [[ -f "$f" ]]; then
+      PREFIX=$(yq eval 'has("Object")' "$f" 2>/dev/null | grep -q "true" && echo ".Object" || echo "")
+      NAME=$(yq eval "${PREFIX}.metadata.name" "$f" 2>/dev/null)
+      CIDR=$(yq eval "${PREFIX}.spec.cidr" "$f" 2>/dev/null)
+      INC=$(yq eval "${PREFIX}.spec.includeRanges[]" "$f" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+      echo "----------------------------------------------------" >>"$OUT"
+      printf "Subnet:  %s\nCIDR:    %s\nInclude: [%s]\n" "$NAME" "$CIDR" "${INC:-None}" >>"$OUT"
+      echo "$CIDR,$INC" >> "$LOGPATH/${cluster}_ip_collect"
+    fi
+  done
+
+  # 2. Audit IPAddressPools
+  echo -e "\n## METALLB IP POOLS:" >>"$OUT"
+  grep "$cluster" "$LOGPATH/files" | grep "ipaddresspools/" | while read -r f; do
+    if [[ -f "$f" ]]; then
+      PREFIX=$(yq eval 'has("Object")' "$f" 2>/dev/null | grep -q "true" && echo ".Object" || echo "")
+      NAME=$(yq eval "${PREFIX}.metadata.name" "$f" 2>/dev/null)
+      ADDR=$(yq eval "${PREFIX}.spec.addresses[]" "$f" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+      printf "Pool: %-20s | Ranges: [%s]\n" "$NAME" "$ADDR" >>"$OUT"
+      echo "$ADDR" >> "$LOGPATH/${cluster}_ip_collect"
+    fi
+  done
+
+  # 3. Overlap Check
+  if [[ -f "$LOGPATH/${cluster}_ip_collect" ]]; then
+    echo -e "\n## OVERLAP VERIFICATION:" >>"$OUT"
+    check_overlaps < "$LOGPATH/${cluster}_ip_collect" >> "$OUT"
+    rm "$LOGPATH/${cluster}_ip_collect"
+  fi
 done
 
 # --- DASHBOARD GENERATION ---
