@@ -1739,7 +1739,7 @@ if [[ -n "$MCCNAME" ]] || [[ -n "$MOSNAME" ]]; then
   cat <<EOF >>"$HTML_REPORT"
 <button class="toggle-sidebar-btn" onclick="toggleSidebar()" title="Toggle Sidebar">◀</button>
 <div class="header">
-    <h1>Mirantis Diagnostic Dashboard</h1>
+    <h1>Myrha - Mirantis Supportdump Dashboard</h1>
     <p>
         <strong>Management (MCC):</strong> ${MCCNAME:-N/A} 
         ${MOSNAME:+ | <strong>Managed (MOSK):</strong> $MOSNAME}
@@ -1748,7 +1748,7 @@ if [[ -n "$MCCNAME" ]] || [[ -n "$MOSNAME" ]]; then
     </p>
 </div>
 <div id="placeholder" class="placeholder-msg">
-    <h2>Welcome to the Mirantis Audit Report</h2>
+    <h2>Empty</h2>
     <p>Please select the fields you would like to analyze from the sidebar on the left.</p>
 </div>
 EOF
