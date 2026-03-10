@@ -14,7 +14,7 @@ for cmd in rg nvim subl yq bc; do
   fi
 done
 # --- HTML Initialization ---
-cat <<EOF >"$HTML_REPORT"
+cat <<'EOF' >"$HTML_REPORT"
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -103,6 +103,9 @@ cat <<EOF >"$HTML_REPORT"
     }
     .card-search:focus { border-color: var(--accent); width: 180px; box-shadow: 0 0 5px rgba(52, 152, 219, 0.3); }
     mark { background: #ffeb3b; color: black; border-radius: 2px; padding: 0 2px; }
+    mark.current { background: #ff9800; font-weight: bold; outline: 2px solid #e65100; }
+    .search-nav-container { display: inline-flex; align-items: center; }
+    .search-count { font-size: 0.7rem; color: #666; margin: 0 5px; min-width: 35px; text-align: center; }
     .back-to-top { 
         font-size: 0.7rem; background: var(--accent); color: white !important; 
         padding: 5px 10px; border-radius: 4px; text-decoration: none !important; font-weight: bold;
@@ -216,21 +219,58 @@ cat <<EOF >"$HTML_REPORT"
             });
         }
     }
+    const searchStates = {};
     function performSearch(anchor, query) {
         const card = document.getElementById(anchor);
         const code = card.querySelector('code');
+        const counter = card.querySelector('.search-count');
         const instance = new Mark(code);
+        
+        searchStates[anchor] = { index: -1, marks: [] };
         instance.unmark({
             done: function() {
                 if (query.length >= 2) {
                     instance.mark(query, {
                         "accuracy": "partially",
                         "separateWordSearch": false,
-                        "acrossElements": true
+                        "acrossElements": true,
+                        done: function() {
+                            const found = card.querySelectorAll('mark');
+                            searchStates[anchor].marks = found;
+                            if (found.length > 0) {
+                                searchStates[anchor].index = 0;
+                                navigateSearch(anchor, 0);
+                            } else {
+                                counter.innerText = "0/0";
+                            }
+                        }
                     });
+                } else {
+                    counter.innerText = "0/0";
                 }
             }
         });
+    }
+    function navigateSearch(anchor, direction) {
+        const state = searchStates[anchor];
+        if (!state || state.marks.length === 0) return;
+
+        state.marks.forEach(m => m.classList.remove('current'));
+        
+        if (direction === 'next') {
+            state.index = (state.index + 1) % state.marks.length;
+        } else if (direction === 'prev') {
+            state.index = (state.index - 1 + state.marks.length) % state.marks.length;
+        } else {
+            state.index = direction; // Absolute index
+        }
+
+        const currentMark = state.marks[state.index];
+        currentMark.classList.add('current');
+        currentMark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        
+        const card = document.getElementById(anchor);
+        card.querySelector('.search-count').innerText = `${state.index + 1}/${state.marks.length}`;
     }
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mark.js/8.11.1/mark.min.js"></script>
@@ -1047,6 +1087,70 @@ if [[ -n "$MOSNAME" ]] && [[ -d "$MOS_DIR/objects/namespaced/tf" ]]; then
     echo "" >>"$OUT"
   done <$LOGPATH/mos-tf-rabbitmq
 fi
+if [[ -n "$MCCNAME" ]]; then
+  OUT="$LOGPATH/mcc_upgrade_audit"
+  echo "Gathering MCC Upgrade details..."
+  echo "################# [MCC UPGRADE AUDIT] #################" >"$OUT"
+
+  # 1. MCCUpgrade Object status
+  echo "## MCC UPGRADE STATUS:" >>"$OUT"
+  MCC_UPGRADE_FILE=$(grep "kaas.mirantis.com/mccupgrades/mcc-upgrade.yaml" "$LOGPATH/files")
+  if [[ -f "$MCC_UPGRADE_FILE" ]]; then
+    yq eval '.Object.status // .status' "$MCC_UPGRADE_FILE" 2>/dev/null >>"$OUT"
+  else
+    echo "mcc-upgrade.yaml not found." >>"$OUT"
+  fi
+
+  # 2. ClusterUpdatePlans (MOS Upgrade Status)
+  echo -e "\n## CLUSTER UPDATE PLANS (MOS Upgrade Status):" >>"$OUT"
+  grep "kaas.mirantis.com/clusterupdateplans/" "$LOGPATH/files" | while read -r f; do
+    if [[ -f "$f" ]]; then
+      PLAN_NAME=$(basename "$f" .yaml)
+      echo "----------------------------------------------------" >>"$OUT"
+      echo "### Plan: $PLAN_NAME" >>"$OUT"
+      
+      # Check if any step has commence: true
+      ACTIVE_STEPS=$(yq eval '.Object.spec.steps[] | select(.commence == true) | .id' "$f" 2>/dev/null)
+      if [[ -n "$ACTIVE_STEPS" ]]; then
+        echo ">>> [!] MOS UPGRADE IS CURRENTLY ONGOING!" >>"$OUT"
+        echo ">>> Active steps: $(echo "$ACTIVE_STEPS" | tr '\n' ' ')" >>"$OUT"
+      else
+        echo ">>> [ ] Upgrade is INACTIVE (All steps set to commence: false)" >>"$OUT"
+      fi
+      
+      echo -e "\nFull Plan Spec:" >>"$OUT"
+      yq eval '.Object.spec // .spec' "$f" 2>/dev/null >>"$OUT"
+      echo -e "\nPlan Status:" >>"$OUT"
+      yq eval '.Object.status // .status' "$f" 2>/dev/null >>"$OUT"
+    fi
+  done
+
+  # 3. Release Controller Health (RBAC/Discovery)
+  echo -e "\n## RELEASE CONTROLLER HEALTH (Logs Analysis):" >>"$OUT"
+  REL_POD_LOGS=$(grep "release-controller" "$LOGPATH/files" | grep ".log")
+  if [[ -n "$REL_POD_LOGS" ]]; then
+    for log in $REL_POD_LOGS; do
+      echo "### Log: $(basename "$log")" >>"$OUT"
+      grep -iE "error|fail|rbac|permission|denied|forbidden" "$log" | tail -n 20 >>"$OUT"
+    done
+  else
+    echo "No release-controller logs found." >>"$OUT"
+  fi
+
+  # 4. Identify Common Blockers (Ceph missing devices, Webhook failures)
+  echo -e "\n## UPGRADE BLOCKERS (Ceph/Webhooks):" >>"$OUT"
+  # Check for Ceph device issues
+  grep -r "doesn't have specified device" "$MCC_DIR/objects" 2>/dev/null | head -n 10 >>"$OUT"
+  # Check for Webhook validation failures
+  grep -r "validations.kaas.mirantis.com" "$MCC_DIR/objects" 2>/dev/null | grep -i "denied" | head -n 10 >>"$OUT"
+  # Check Admission Controller logs
+  ADM_POD_LOGS=$(grep "admission-controller" "$LOGPATH/files" | grep ".log")
+  for log in $ADM_POD_LOGS; do
+     echo "### Log: $(basename "$log")" >>"$OUT"
+     grep -iE "mos-21.0.5|denied|failed to call webhook" "$log" | tail -n 10 >>"$OUT"
+  done
+fi
+
 if [[ -n "$MOSNAME" ]]; then
   OUT="$LOGPATH/mos_pv_pvc"
   echo "Gathering MOS PV and PVC Correlation details..."
@@ -1799,7 +1903,12 @@ EOF
       echo "<div class='card' id='$ANCHOR'>"
       echo "  <h2>$TITLE"
       echo "    <div class='card-header-actions'>"
-      echo "      <input type='text' class='card-search' placeholder='Search logs...' onkeyup=\"performSearch('$ANCHOR', this.value)\">"
+      echo "      <div class='search-nav-container'>"
+      echo "        <input type='text' class='card-search' placeholder='Search logs...' onkeyup=\"performSearch('$ANCHOR', this.value)\">"
+      echo "        <span class='btn-tool' onclick=\"navigateSearch('$ANCHOR', 'prev')\">▲</span>"
+      echo "        <span class='btn-tool' onclick=\"navigateSearch('$ANCHOR', 'next')\">▼</span>"
+      echo "        <span class='search-count'>0/0</span>"
+      echo "      </div>"
       echo "      <span class='btn-tool' onclick=\"scrollToLimit('$ANCHOR', 'top')\">↑ Log Top</span>"
       echo "      <span class='btn-tool' onclick=\"scrollToLimit('$ANCHOR', 'bottom')\">↓ Log Bottom</span>"
       echo "      <span class='btn-tool' onclick=\"toggleFullScreen(this, '$ANCHOR')\">Full Screen</span>"
