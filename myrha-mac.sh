@@ -100,6 +100,12 @@ cat <<EOF >"$HTML_REPORT"
     .btn-tool:hover { background: #e0e0e0; border-color: #ccc; color: #333; }
     .btn-tool.active { background: var(--accent); color: white; border-color: var(--accent); }
     .btn-copy.success { background: #27ae60 !important; color: white !important; border-color: #2ecc71 !important; }
+    .card-search {
+        font-size: 0.75rem; padding: 4px 10px; border-radius: 4px; border: 1px solid #ddd;
+        outline: none; width: 120px; transition: 0.3s; margin-right: 5px;
+    }
+    .card-search:focus { border-color: var(--accent); width: 180px; box-shadow: 0 0 5px rgba(52, 152, 219, 0.3); }
+    mark { background: #ffeb3b; color: black; border-radius: 2px; padding: 0 2px; }
     .back-to-top { 
         font-size: 0.7rem; background: var(--accent); color: white !important; 
         padding: 5px 10px; border-radius: 4px; text-decoration: none !important; font-weight: bold;
@@ -110,6 +116,7 @@ cat <<EOF >"$HTML_REPORT"
         z-index: 3000; margin: 0; border-radius: 0; overflow-y: auto;
         box-sizing: border-box; background: white;
     }
+    .card.fullscreen .back-to-top { display: none; }
     body.has-fullscreen { overflow: hidden; }
     .card.fullscreen pre { max-height: calc(100vh - 120px); }
 
@@ -202,7 +209,34 @@ cat <<EOF >"$HTML_REPORT"
         btn.innerText = isFS ? 'Exit Full Screen' : 'Full Screen';
         btn.classList.toggle('active', isFS);
     }
+    function scrollToLimit(anchor, limit) {
+        const card = document.getElementById(anchor);
+        const pre = card.querySelector('pre');
+        if (pre) {
+            pre.scrollTo({
+                top: limit === 'top' ? 0 : pre.scrollHeight,
+                behavior: 'smooth'
+            });
+        }
+    }
+    function performSearch(anchor, query) {
+        const card = document.getElementById(anchor);
+        const code = card.querySelector('code');
+        const instance = new Mark(code);
+        instance.unmark({
+            done: function() {
+                if (query.length >= 2) {
+                    instance.mark(query, {
+                        "accuracy": "partially",
+                        "separateWordSearch": false,
+                        "acrossElements": true
+                    });
+                }
+            }
+        });
+    }
 </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mark.js/8.11.1/mark.min.js"></script>
 </head>
 <body>
     <nav class="sidebar">
@@ -1784,6 +1818,9 @@ EOF
       echo "<div class='card' id='$ANCHOR'>"
       echo "  <h2>$TITLE"
       echo "    <div class='card-header-actions'>"
+      echo "      <input type='text' class='card-search' placeholder='Search logs...' onkeyup=\"performSearch('$ANCHOR', this.value)\">"
+      echo "      <span class='btn-tool' onclick=\"scrollToLimit('$ANCHOR', 'top')\">↑ Log Top</span>"
+      echo "      <span class='btn-tool' onclick=\"scrollToLimit('$ANCHOR', 'bottom')\">↓ Log Bottom</span>"
       echo "      <span class='btn-tool' onclick=\"toggleFullScreen(this, '$ANCHOR')\">Full Screen</span>"
       echo "      <span class='btn-tool btn-copy' onclick=\"copyToClipboard(this, '$ANCHOR')\">Copy</span>"
       echo "      <span class='btn-tool wrap-btn' onclick=\"toggleBlockWrap(this, '$ANCHOR')\">Wrap: OFF</span>"
