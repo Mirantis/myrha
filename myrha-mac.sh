@@ -375,7 +375,9 @@ audit_k8s_secret() {
       # Silent Probe: Only process if it's a valid key (RSA/EC)
       if openssl pkey -in "$TARGET_FILE" -text -noout &>/dev/null; then
         PRIVATE_KEY="$TARGET_FILE"
-        cat "$TARGET_FILE"
+        echo "-----BEGIN PRIVATE KEY-----"
+        echo "[REDACTED - SENSITIVE DATA]"
+        echo "-----END PRIVATE KEY-----"
         echo -e "\n----------------------------------------------------"
         K_MOD=$(openssl rsa -noout -modulus -in "$TARGET_FILE" 2>/dev/null | openssl md5 | awk '{print $NF}')
         echo "🔢 RSA Modulus MD5: ${K_MOD:-[Non-RSA Key]}"
@@ -606,6 +608,115 @@ if [[ -n "$MOSNAME" ]]; then
     fi
   fi
 fi
+# 5. MOS Stacklight & Patroni Details Card
+if [[ -d "$MOS_DIR/objects/namespaced/stacklight" ]]; then
+  OUT="$LOGPATH/mos_stacklight"
+  echo "Gathering MOS Stacklight details..."
+  echo "################# [MOS STACKLIGHT & PATRONI DETAILS] #################" >"$OUT"
+  echo "" >>"$OUT"
+
+  echo "## Patroni Cluster Status:" >>"$OUT"
+  PATRONI_LOGS=$(ls "$MOS_DIR/objects/namespaced/stacklight/core/pods/patroni-"*/patroni-patroni-exporter.log 2>/dev/null)
+  for log in $PATRONI_LOGS; do
+    echo "### File: $log" >>"$OUT"
+    grep -h "patroni_info" "$log" 2>/dev/null | tail -n 1 | grep -oE "'name': '[^']+', 'role': '[^']+', 'state': '[^']+'" | sed "s/'//g" >>"$OUT"
+  done
+
+  echo "## Patroni Replication Info:" >>"$OUT"
+  for log in $PATRONI_LOGS; do
+    REPL_INFO=$(grep -h "replication_info" "$log" 2>/dev/null | tail -n 1 | grep -oE "\[\{'usename': '[^']+', 'application_name': '[^']+', 'client_addr': '[^']+', 'state': '[^']+', 'sync_state': '[^']+', 'sync_priority': [0-9]+\},.*\]")
+    if [[ -n "$REPL_INFO" ]]; then
+      echo "### File: $log" >>"$OUT"
+      echo "$REPL_INFO" | sed "s/'//g; s/\[{//g; s/}\]//g; s/},{/\n/g" >>"$OUT"
+    fi
+  done
+
+  echo "## Active Prometheus Alerts:" >>"$OUT"
+  ALERTS_FOUND=0
+  ALERTA_LOGS=$(find "$MOS_DIR/objects/namespaced/stacklight/core/pods/" -name "alerta.log" 2>/dev/null)
+  for alog in $ALERTA_LOGS; do
+    FIRING=$(grep -i "firing" "$alog" | tail -n 20)
+    if [[ -n "$FIRING" ]]; then
+      echo "### File: $alog" >>"$OUT"
+      echo "$FIRING" >>"$OUT"
+      ALERTS_FOUND=1
+    fi
+  done
+  [[ $ALERTS_FOUND -eq 0 ]] && echo "No firing alerts found in logs." >>"$OUT"
+
+  echo "## Stacklight Deployment Status:" >>"$OUT"
+  HELMB_FILE=$(ls "$MOS_DIR/objects/namespaced/stacklight/lcm.mirantis.com/helmbundles/"*.yaml 2>/dev/null | head -n 1)
+  if [[ -f "$HELMB_FILE" ]]; then
+    echo "### File: $HELMB_FILE" >>"$OUT"
+    yq eval '.Object.status // .status' "$HELMB_FILE" 2>/dev/null >>"$OUT"
+  fi
+fi
+
+# 6. MOS Credentials Card
+if [[ -n "$MOSNAME" ]]; then
+  OUT="$LOGPATH/mos_credentials"
+  echo "Scanning MOS Secrets for Credentials..."
+  echo "################# [MOS CREDENTIALS (DECRYPTED)] #################" >"$OUT"
+  find "$MOS_DIR" -path "*/core/secrets/*.yaml" -type f | while read -r secret_file; do
+    DATA_EXPR='(.Object.data // .data // .Object.stringData // .stringData)'
+    KEYS=$(yq eval "$DATA_EXPR | keys | .[]" "$secret_file" 2>/dev/null)
+    FOUND_CRED=false
+    for KEY in $KEYS; do
+      if [[ "$KEY" =~ user|pass|login|account|creds|secret|token|key ]]; then
+        VAL=$(yq eval "$DATA_EXPR.\"$KEY\"" "$secret_file" 2>/dev/null)
+        DECODED=$(echo "$VAL" | base64 -d 2>/dev/null)
+        
+        # Identification of SSL/TLS components - SHOULD BE SKIPPED FROM CREDENTIALS
+        IS_TLS=false
+        # 1. Content-based detection (most reliable)
+        if [[ -n "$DECODED" ]]; then
+           if echo "$DECODED" | grep -qEi "BEGIN CERTIFICATE|BEGIN .* PRIVATE KEY|BEGIN .* KEY|BEGIN PKCS7|BEGIN X509|SSH PRIVATE KEY"; then
+             IS_TLS=true
+           fi
+        elif echo "$VAL" | grep -qEi "BEGIN CERTIFICATE|BEGIN .* PRIVATE KEY|BEGIN .* KEY|BEGIN PKCS7|BEGIN X509|SSH PRIVATE KEY"; then
+             IS_TLS=true
+        fi
+        
+        # 2. Key name identification for TLS/Key components (backup)
+        # Matches: tls.key, tls_key, private_key, ca.crt, cert, etc.
+        if [[ "$KEY" =~ (tls|cert|crt|ca|pem|key|pub|authorized_keys) ]]; then
+           # Exclude common false positives if necessary, but here we want to be aggressive
+           # as the user wants all these hidden from credentials.
+           IS_TLS=true
+        fi
+
+        if [ "$IS_TLS" = true ]; then
+           continue # Skip SSL/TLS and Key components in Credentials report
+        fi
+
+        if [ "$FOUND_CRED" = false ]; then
+          echo "----------------------------------------------------" >>"$OUT"
+          echo "## File: $secret_file" >>"$OUT"
+          FOUND_CRED=true
+        fi
+        
+        if [[ -n "$DECODED" ]]; then
+           # Check if it's binary
+           if [[ "$DECODED" =~ [^[:print:][:space:]] ]]; then
+             printf "🔑 %-30s : [BINARY DATA]\n" "$KEY" >>"$OUT"
+           else
+             # It's printable and not a cert/key. Show it.
+             LINE_COUNT=$(echo "$DECODED" | wc -l)
+             if [ "$LINE_COUNT" -le 1 ]; then
+               printf "🔑 %-30s : %s\n" "$KEY" "$DECODED" >>"$OUT"
+             else
+               printf "🔑 %-30s :\n" "$KEY" >>"$OUT"
+               echo "$DECODED" | sed 's/^/    /' >>"$OUT"
+             fi
+           fi
+        else
+           printf "🔑 %-30s : %s\n" "$KEY" "$VAL" >>"$OUT"
+        fi
+      fi
+    done
+  done
+fi
+
 if [[ -n "$MOSNAME" ]]; then
   OUT="$LOGPATH/mos_events"
   echo "Gathering MOS cluster events..."
@@ -964,81 +1075,79 @@ fi
 if [[ -n "$MCCNAME" ]]; then
   OUT="$LOGPATH/mcc_subnet"
   echo "Gathering MCC subnet details..."
-  echo "################# [MCC SUBNET DETAILS] #################" >"$OUT"
+  echo "################# [MCC SUBNET DETAILS & AUDIT] #################" >"$OUT"
   grep $MCC_DIR/objects/namespaced/$MCCNAMESPACE/ipam.mirantis.com/subnets/ $LOGPATH/files >$LOGPATH/mcc-subnet
-  echo "" >>"$OUT"
-  printf '## Subnets' >>"$OUT"
-  printf " (Total: $(wc -l <$LOGPATH/mcc-subnet))" >>"$OUT"
-  echo "" >>"$OUT"
-  while read -r line; do
-    printf "# "
-    basename "$line" .yaml >>"$OUT"
-  done <$LOGPATH/mcc-subnet >>"$OUT"
-  echo "" >>"$OUT"
-  while read -r line; do
-    printf "# $line:"
-    echo ""
-    yq eval '.Object.spec // .spec' "$line" 2>/dev/null >>"$OUT"
-    yq eval '.Object.status // .status' "$line" 2>/dev/null >>"$OUT"
-    echo ""
-  done <$LOGPATH/mcc-subnet >>"$OUT"
-  echo "" >>"$OUT"
-fi
-
-if [[ -n "$MCCNAME" ]]; then
-  OUT="$LOGPATH/mos_subnet"
-  echo "Gathering MOS subnet details..."
-  echo "################# [MOS SUBNET DETAILS] #################" >"$OUT"
-  grep $MCC_DIR/objects/namespaced/$MOSNAMESPACE/ipam.mirantis.com/subnets/ $LOGPATH/files >$LOGPATH/mos-subnet
-  echo "" >>"$OUT"
-  printf '## Subnets' >>"$OUT"
-  printf " (Total: $(wc -l <$LOGPATH/mos-subnet))" >>"$OUT"
-  echo "" >>"$OUT"
-  while read -r line; do
-    printf "# "
-    basename "$line" .yaml >>"$OUT"
-  done <$LOGPATH/mos-subnet >>"$OUT"
-  echo "" >>"$OUT"
-  while read -r line; do
-    printf "# $line:"
-    echo ""
-    yq eval '.Object.spec // .spec' "$line" 2>/dev/null >>"$OUT"
-    yq eval '.Object.status // .status' "$line" 2>/dev/null >>"$OUT"
-    echo ""
-  done <$LOGPATH/mos-subnet >>"$OUT"
-  echo "" >>"$OUT"
-fi
-
-# --- MOS NETWORKING (Subnets & IPPools) ---
-if [[ -n "$MOSNAME" ]]; then
-  OUT="$LOGPATH/mos_networking_audit"
-  echo "Gathering MOS Networking details..."
-  echo "################# [MOS SUBNET & IPPOOL RESUME] #################" >"$OUT"
-
-  ALL_IP_DATA=""
-
-  # 1. Audit Subnets
+  
   echo "## IPAM SUBNETS (Ranges Resume):" >>"$OUT"
-  grep "$MOSNAME" "$LOGPATH/files" | grep "ipam.mirantis.com/subnets/" | while read -r f; do
+  while read -r f; do
     if [[ -f "$f" ]]; then
       PREFIX=$(yq eval 'has("Object")' "$f" 2>/dev/null | grep -q "true" && echo ".Object" || echo "")
       NAME=$(yq eval "${PREFIX}.metadata.name" "$f" 2>/dev/null)
       CIDR=$(yq eval "${PREFIX}.spec.cidr" "$f" 2>/dev/null)
       INC=$(yq eval "${PREFIX}.spec.includeRanges[]" "$f" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
       EXC=$(yq eval "${PREFIX}.spec.excludeRanges[]" "$f" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
-
       echo "----------------------------------------------------" >>"$OUT"
       printf "Subnet:  %s\n" "$NAME" >>"$OUT"
       printf "CIDR:    %s\n" "$CIDR" >>"$OUT"
       printf "Include: [%s]\n" "${INC:-None}" >>"$OUT"
       printf "Exclude: [%s]\n" "${EXC:-None}" >>"$OUT"
+      echo "$CIDR,$INC" >>"$LOGPATH/mcc_ip_collect"
+    fi
+  done <$LOGPATH/mcc-subnet
 
-      # Collect for overlap check
-      echo "$CIDR,$INC" >>"$LOGPATH/mos_ip_collect"
+  # Audit IPAddressPools (MetalLB)
+  echo -e "\n## METALLB IP POOLS:" >>"$OUT"
+  grep "$MCCNAME" "$LOGPATH/files" | grep "ipaddresspools/" | while read -r f; do
+    if [[ -f "$f" ]]; then
+      PREFIX=$(yq eval 'has("Object")' "$f" 2>/dev/null | grep -q "true" && echo ".Object" || echo "")
+      NAME=$(yq eval "${PREFIX}.metadata.name" "$f" 2>/dev/null)
+      ADDR=$(yq eval "${PREFIX}.spec.addresses[]" "$f" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+      printf "Pool: %-20s | Ranges: [%s]\n" "$NAME" "$ADDR" >>"$OUT"
+      echo "$ADDR" >>"$LOGPATH/mcc_ip_collect"
     fi
   done
 
-  # 2. Audit IPAddressPools (MetalLB)
+  if [[ -f "$LOGPATH/mcc_ip_collect" ]]; then
+    echo -e "\n## OVERLAP VERIFICATION:" >>"$OUT"
+    check_overlaps <"$LOGPATH/mcc_ip_collect" >>"$OUT"
+    rm "$LOGPATH/mcc_ip_collect"
+  fi
+
+  echo -e "\n## Full Subnet YAML Details:" >>"$OUT"
+  while read -r line; do
+    echo "----------------------------------------------------" >>"$OUT"
+    printf "# $line:" >>"$OUT"
+    echo "" >>"$OUT"
+    yq eval '.Object.spec // .spec' "$line" 2>/dev/null >>"$OUT"
+    yq eval '.Object.status // .status' "$line" 2>/dev/null >>"$OUT"
+    echo "" >>"$OUT"
+  done <$LOGPATH/mcc-subnet
+fi
+
+if [[ -n "$MCCNAME" ]]; then
+  OUT="$LOGPATH/mos_subnet"
+  echo "Gathering MOS subnet details..."
+  echo "################# [MOS SUBNET DETAILS & AUDIT] #################" >"$OUT"
+  grep $MCC_DIR/objects/namespaced/$MOSNAMESPACE/ipam.mirantis.com/subnets/ $LOGPATH/files >$LOGPATH/mos-subnet
+  
+  echo "## IPAM SUBNETS (Ranges Resume):" >>"$OUT"
+  while read -r f; do
+    if [[ -f "$f" ]]; then
+      PREFIX=$(yq eval 'has("Object")' "$f" 2>/dev/null | grep -q "true" && echo ".Object" || echo "")
+      NAME=$(yq eval "${PREFIX}.metadata.name" "$f" 2>/dev/null)
+      CIDR=$(yq eval "${PREFIX}.spec.cidr" "$f" 2>/dev/null)
+      INC=$(yq eval "${PREFIX}.spec.includeRanges[]" "$f" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+      EXC=$(yq eval "${PREFIX}.spec.excludeRanges[]" "$f" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+      echo "----------------------------------------------------" >>"$OUT"
+      printf "Subnet:  %s\n" "$NAME" >>"$OUT"
+      printf "CIDR:    %s\n" "$CIDR" >>"$OUT"
+      printf "Include: [%s]\n" "${INC:-None}" >>"$OUT"
+      printf "Exclude: [%s]\n" "${EXC:-None}" >>"$OUT"
+      echo "$CIDR,$INC" >>"$LOGPATH/mos_ip_collect"
+    fi
+  done <$LOGPATH/mos-subnet
+
+  # Audit IPAddressPools (MetalLB)
   echo -e "\n## METALLB IP POOLS:" >>"$OUT"
   grep "$MOSNAME" "$LOGPATH/files" | grep "ipaddresspools/" | while read -r f; do
     if [[ -f "$f" ]]; then
@@ -1046,18 +1155,25 @@ if [[ -n "$MOSNAME" ]]; then
       NAME=$(yq eval "${PREFIX}.metadata.name" "$f" 2>/dev/null)
       ADDR=$(yq eval "${PREFIX}.spec.addresses[]" "$f" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
       printf "Pool: %-20s | Ranges: [%s]\n" "$NAME" "$ADDR" >>"$OUT"
-
-      # Collect for overlap check
       echo "$ADDR" >>"$LOGPATH/mos_ip_collect"
     fi
   done
 
-  # 3. Perform Overlap Check
   if [[ -f "$LOGPATH/mos_ip_collect" ]]; then
     echo -e "\n## OVERLAP VERIFICATION:" >>"$OUT"
     check_overlaps <"$LOGPATH/mos_ip_collect" >>"$OUT"
     rm "$LOGPATH/mos_ip_collect"
   fi
+
+  echo -e "\n## Full Subnet YAML Details:" >>"$OUT"
+  while read -r line; do
+    echo "----------------------------------------------------" >>"$OUT"
+    printf "# $line:" >>"$OUT"
+    echo "" >>"$OUT"
+    yq eval '.Object.spec // .spec' "$line" 2>/dev/null >>"$OUT"
+    yq eval '.Object.status // .status' "$line" 2>/dev/null >>"$OUT"
+    echo "" >>"$OUT"
+  done <$LOGPATH/mos-subnet
 fi
 
 if [[ -n "$MOSNAME" ]] && [[ -d "$MOS_DIR/objects/namespaced/tf" ]]; then
@@ -1231,6 +1347,21 @@ if [[ -n "$MOSNAME" ]]; then
       yq eval '.Object.status // .status' "$pvc" 2>/dev/null >>"$OUT"
     fi
   done
+
+  # --- SUMMARY RESUME ---
+  echo -e "\n################# [PV <-> PVC SUMMARY RESUME] #################" >>"$OUT"
+  printf "%-50s | %-50s\n" "PERSISTENT VOLUME" "BOUND PVC (NAMESPACE/NAME)" >>"$OUT"
+  echo "------------------------------------------------------------------------------------------------------" >>"$OUT"
+  for pv in $PV_FILES; do
+    PV_NAME=$(basename "$pv" .yaml)
+    CLAIM_NS=$(yq eval '.Object.spec.claimRef.namespace // .spec.claimRef.namespace' "$pv" 2>/dev/null)
+    CLAIM_NAME=$(yq eval '.Object.spec.claimRef.name // .spec.claimRef.name' "$pv" 2>/dev/null)
+    if [[ -n "$CLAIM_NAME" && "$CLAIM_NAME" != "null" ]]; then
+      printf "%-50s | %-50s\n" "$PV_NAME" "$CLAIM_NS/$CLAIM_NAME" >>"$OUT"
+    else
+      printf "%-50s | %-50s\n" "$PV_NAME" "[UNBOUND]" >>"$OUT"
+    fi
+  done
   rm "$PROCESSED_PVC"
 fi
 
@@ -1369,6 +1500,108 @@ if [[ -n "$MCCNAME" ]]; then
   #add_to_html "MCC Cluster Details" "$(cat "$OUT")"
   fi
 fi
+# 5. MCC Stacklight & Patroni Details Card
+if [[ -d "$MCC_DIR/objects/namespaced/stacklight" ]]; then
+  OUT="$LOGPATH/mcc_stacklight"
+  echo "Gathering MCC Stacklight details..."
+  echo "################# [MCC STACKLIGHT & PATRONI DETAILS] #################" >"$OUT"
+  echo "" >>"$OUT"
+
+  echo "## Patroni Cluster Status:" >>"$OUT"
+  PATRONI_LOGS=$(ls "$MCC_DIR/objects/namespaced/stacklight/core/pods/patroni-"*/patroni-patroni-exporter.log 2>/dev/null)
+  for log in $PATRONI_LOGS; do
+    echo "### File: $log" >>"$OUT"
+    grep -h "patroni_info" "$log" 2>/dev/null | tail -n 1 | grep -oE "'name': '[^']+', 'role': '[^']+', 'state': '[^']+'" | sed "s/'//g" >>"$OUT"
+  done
+
+  echo "## Patroni Replication Info:" >>"$OUT"
+  for log in $PATRONI_LOGS; do
+    REPL_INFO=$(grep -h "replication_info" "$log" 2>/dev/null | tail -n 1 | grep -oE "\[\{'usename': '[^']+', 'application_name': '[^']+', 'client_addr': '[^']+', 'state': '[^']+', 'sync_state': '[^']+', 'sync_priority': [0-9]+\},.*\]")
+    if [[ -n "$REPL_INFO" ]]; then
+      echo "### File: $log" >>"$OUT"
+      echo "$REPL_INFO" | sed "s/'//g; s/\[{//g; s/}\]//g; s/},{/\n/g" >>"$OUT"
+    fi
+  done
+
+  echo "## Active Prometheus Alerts:" >>"$OUT"
+  ALERTS_FOUND=0
+  ALERTA_LOGS=$(find "$MCC_DIR/objects/namespaced/stacklight/core/pods/" -name "alerta.log" 2>/dev/null)
+  for alog in $ALERTA_LOGS; do
+    FIRING=$(grep -i "firing" "$alog" | tail -n 20)
+    if [[ -n "$FIRING" ]]; then
+      echo "### File: $alog" >>"$OUT"
+      echo "$FIRING" >>"$OUT"
+      ALERTS_FOUND=1
+    fi
+  done
+  [[ $ALERTS_FOUND -eq 0 ]] && echo "No firing alerts found in logs." >>"$OUT"
+fi
+
+# 6. MCC Credentials Card
+if [[ -n "$MCCNAME" ]]; then
+  OUT="$LOGPATH/mcc_credentials"
+  echo "Scanning MCC Secrets for Credentials..."
+  echo "################# [MCC CREDENTIALS (DECRYPTED)] #################" >"$OUT"
+  find "$MCC_DIR" -path "*/core/secrets/*.yaml" -type f | while read -r secret_file; do
+    DATA_EXPR='(.Object.data // .data // .Object.stringData // .stringData)'
+    KEYS=$(yq eval "$DATA_EXPR | keys | .[]" "$secret_file" 2>/dev/null)
+    FOUND_CRED=false
+    for KEY in $KEYS; do
+      if [[ "$KEY" =~ user|pass|login|account|creds|secret|token|key ]]; then
+        VAL=$(yq eval "$DATA_EXPR.\"$KEY\"" "$secret_file" 2>/dev/null)
+        DECODED=$(echo "$VAL" | base64 -d 2>/dev/null)
+        
+        # Identification of SSL/TLS components - SHOULD BE SKIPPED FROM CREDENTIALS
+        IS_TLS=false
+        # 1. Content-based detection (most reliable)
+        if [[ -n "$DECODED" ]]; then
+           if echo "$DECODED" | grep -qEi "BEGIN CERTIFICATE|BEGIN .* PRIVATE KEY|BEGIN .* KEY|BEGIN PKCS7|BEGIN X509|SSH PRIVATE KEY"; then
+             IS_TLS=true
+           fi
+        elif echo "$VAL" | grep -qEi "BEGIN CERTIFICATE|BEGIN .* PRIVATE KEY|BEGIN .* KEY|BEGIN PKCS7|BEGIN X509|SSH PRIVATE KEY"; then
+             IS_TLS=true
+        fi
+        
+        # 2. Key name identification for TLS/Key components (backup)
+        # Matches: tls.key, tls_key, private_key, ca.crt, cert, etc.
+        if [[ "$KEY" =~ (tls|cert|crt|ca|pem|key|pub|authorized_keys) ]]; then
+           # Exclude common false positives if necessary, but here we want to be aggressive
+           # as the user wants all these hidden from credentials.
+           IS_TLS=true
+        fi
+
+        if [ "$IS_TLS" = true ]; then
+           continue # Skip SSL/TLS and Key components in Credentials report
+        fi
+
+        if [ "$FOUND_CRED" = false ]; then
+          echo "----------------------------------------------------" >>"$OUT"
+          echo "## File: $secret_file" >>"$OUT"
+          FOUND_CRED=true
+        fi
+        
+        if [[ -n "$DECODED" ]]; then
+           # Check if it's binary
+           if [[ "$DECODED" =~ [^[:print:][:space:]] ]]; then
+             printf "🔑 %-30s : [BINARY DATA]\n" "$KEY" >>"$OUT"
+           else
+             # It's printable and not a cert/key. Show it.
+             LINE_COUNT=$(echo "$DECODED" | wc -l)
+             if [ "$LINE_COUNT" -le 1 ]; then
+               printf "🔑 %-30s : %s\n" "$KEY" "$DECODED" >>"$OUT"
+             else
+               printf "🔑 %-30s :\n" "$KEY" >>"$OUT"
+               echo "$DECODED" | sed 's/^/    /' >>"$OUT"
+             fi
+           fi
+        else
+           printf "🔑 %-30s : %s\n" "$KEY" "$VAL" >>"$OUT"
+        fi
+      fi
+    done
+  done
+fi
+
 if [[ -n "$MCCNAME" ]]; then
   OUT="$LOGPATH/mcc_events"
   echo "Gathering MCC events..."
@@ -1701,11 +1934,16 @@ fi
 OUT="$LOGPATH/mcc_license_releases"
 echo "Gathering License and Releases..."
 echo "################# [LICENSE & RELEASE DETAILS] #################" >"$OUT"
-LICENSE_FILE=$(find "$BASE_DIR/kaas-mgmt" -name "license.yaml" 2>/dev/null)
+LICENSE_FILE=$(grep "kaas.mirantis.com/licenses/license.yaml" "$LOGPATH/files" | head -n 1)
 if [[ -f "$LICENSE_FILE" ]]; then
-  echo "## License Status:" >>"$OUT"
+  echo "## License Details:" >>"$OUT"
   echo "# $LICENSE_FILE:" >>"$OUT"
+  echo "### Spec:" >>"$OUT"
+  yq eval '.Object.spec // .spec' "$LICENSE_FILE" 2>/dev/null >>"$OUT"
+  echo -e "\n### Status:" >>"$OUT"
   yq eval '.Object.status // .status' "$LICENSE_FILE" 2>/dev/null >>"$OUT"
+else
+  echo "## License file not found in kaas.mirantis.com/licenses/" >>"$OUT"
 fi
 echo -e "\n## Available KaasReleases:" >>"$OUT"
 ls "$BASE_DIR/kaas-mgmt/objects/cluster/kaas.mirantis.com/kaasreleases/" 2>/dev/null | sed 's/.yaml//' >>"$OUT"
@@ -1838,6 +2076,22 @@ if [[ -n "$MCCNAME" ]]; then
     yq eval '.Object.status // .status' "$line" 2>/dev/null >>"$OUT"
     echo "" >>"$OUT"
   done <$LOGPATH/mcc-pvc
+
+  # --- SUMMARY RESUME ---
+  echo -e "\n################# [PV <-> PVC SUMMARY RESUME] #################" >>"$OUT"
+  printf "%-50s | %-50s\n" "PERSISTENT VOLUME" "BOUND PVC (NAMESPACE/NAME)" >>"$OUT"
+  echo "------------------------------------------------------------------------------------------------------" >>"$OUT"
+  PV_FILES=$(grep $MCC_DIR/objects/cluster/core/persistentvolumes/ $LOGPATH/files)
+  for pv in $PV_FILES; do
+    PV_NAME=$(basename "$pv" .yaml)
+    CLAIM_NS=$(yq eval '.Object.spec.claimRef.namespace // .spec.claimRef.namespace' "$pv" 2>/dev/null)
+    CLAIM_NAME=$(yq eval '.Object.spec.claimRef.name // .spec.claimRef.name' "$pv" 2>/dev/null)
+    if [[ -n "$CLAIM_NAME" && "$CLAIM_NAME" != "null" ]]; then
+      printf "%-50s | %-50s\n" "$PV_NAME" "$CLAIM_NS/$CLAIM_NAME" >>"$OUT"
+    else
+      printf "%-50s | %-50s\n" "$PV_NAME" "[UNBOUND]" >>"$OUT"
+    fi
+  done
 fi
 # --- MCC SERVICES ---
 if [[ -n "$MCC_DIR" ]]; then
@@ -1875,13 +2129,110 @@ if [[ -n "$MOS_DIR" ]]; then
   done
 fi
 
+# --- EXECUTIVE SUMMARY GENERATION (Now runs after normalization) ---
+echo "Generating Summary..."
+OUT="$LOGPATH/summary.yaml"
+echo "################# [EXECUTIVE SUMMARY & CRITICAL FINDINGS] #################" >"$OUT"
+
+# 1. Cluster Status & Upgrades
+echo "## 🚀 CLUSTER & UPGRADE OVERVIEW:" >>"$OUT"
+if [[ -f "$LOGPATH/mcc_upgrade_audit.yaml" ]]; then
+  grep -E "KaaS Release:|MKE Release:|Upgrade:|Phase:|>>>" "$LOGPATH/mcc_upgrade_audit.yaml" >>"$OUT"
+fi
+
+# Extract last messages from cluster YAMLs
+echo -e "\n### LATEST CLUSTER MESSAGES:" >>"$OUT"
+for f in "$LOGPATH"/*cluster.yaml; do
+  [[ -f "$f" ]] || continue
+  echo "#### $(basename "$f" .yaml | tr '[:lower:]' '[:upper:]'):" >>"$OUT"
+  grep -Ei "\- message:|message:" "$f" | grep -v "null" | grep -v "message: {}" | tail -n 5 >>"$OUT"
+  echo "" >>"$OUT"
+done
+
+# 2. Node Health (Grep from cluster details)
+echo -e "\n## 🖥️  NODE STATUS SUMMARY (Non-Ready):" >>"$OUT"
+NODES_NON_READY=$(grep -h "|" "$LOGPATH"/*cluster.yaml 2>/dev/null | grep -v "Ready: True" | sort | uniq -c)
+if [[ -n "$NODES_NON_READY" ]]; then
+  echo "$NODES_NON_READY" >>"$OUT"
+else
+  echo "No non-ready nodes found." >>"$OUT"
+fi
+
+# 3. Stacklight & Patroni Status
+echo -e "\n## 📊 STACKLIGHT & PATRONI STATUS:" >>"$OUT"
+
+# MCC Stacklight
+if [[ -d "$MCC_DIR/objects/namespaced/stacklight" ]]; then
+  echo "### [MCC] Patroni Cluster Status:" >>"$OUT"
+  grep -rh "patroni_info" "$MCC_DIR/objects/namespaced/stacklight/core/pods/patroni-"*/patroni-patroni-exporter.log 2>/dev/null | tail -n 20 | grep -oE "'name': '[^']+', 'role': '[^']+', 'state': '[^']+'" | sort | uniq | sed "s/'//g" >>"$OUT"
+  
+  echo -e "\n### [MCC] Active Prometheus Alerts:" >>"$OUT"
+  ALERTS_FOUND=0
+  ALERTA_LOGS=$(find "$MCC_DIR/objects/namespaced/stacklight/core/pods/" -name "alerta.log" 2>/dev/null)
+  for alog in $ALERTA_LOGS; do
+    FIRING=$(grep -i "firing" "$alog" | tail -n 5)
+    if [[ -n "$FIRING" ]]; then
+      echo "$FIRING" >>"$OUT"
+      ALERTS_FOUND=1
+    fi
+  done
+  [[ $ALERTS_FOUND -eq 0 ]] && echo "No active firing alerts found in MCC logs." >>"$OUT"
+  echo "" >>"$OUT"
+fi
+
+# MOS Stacklight
+if [[ -d "$MOS_DIR/objects/namespaced/stacklight" ]]; then
+  echo "### [MOS] Patroni Cluster Status:" >>"$OUT"
+  grep -rh "patroni_info" "$MOS_DIR/objects/namespaced/stacklight/core/pods/patroni-"*/patroni-patroni-exporter.log 2>/dev/null | tail -n 20 | grep -oE "'name': '[^']+', 'role': '[^']+', 'state': '[^']+'" | sort | uniq | sed "s/'//g" >>"$OUT"
+  
+  echo -e "\n### [MOS] Active Prometheus Alerts:" >>"$OUT"
+  ALERTS_FOUND=0
+  ALERTA_LOGS=$(find "$MOS_DIR/objects/namespaced/stacklight/core/pods/" -name "alerta.log" 2>/dev/null)
+  for alog in $ALERTA_LOGS; do
+    FIRING=$(grep -i "firing" "$alog" | tail -n 5)
+    if [[ -n "$FIRING" ]]; then
+      echo "$FIRING" >>"$OUT"
+      ALERTS_FOUND=1
+    fi
+  done
+  
+  if [[ $ALERTS_FOUND -eq 0 ]]; then
+    echo "No active firing alerts found in MOS logs." >>"$OUT"
+  fi
+else
+  echo "MOS Stacklight namespace not found." >>"$OUT"
+fi
+
+# 4. Failed Pods Count
+echo -e "\n## ⚠️  NON-RUNNING PODS:" >>"$OUT"
+if [[ -f "$LOGPATH/mcc_failed_pods.yaml" ]]; then
+  COUNT=$(grep "Namespace:" "$LOGPATH/mcc_failed_pods.yaml" | wc -l)
+  echo "Total MCC Non-Running Pods: $COUNT" >>"$OUT"
+fi
+if [[ -f "$LOGPATH/mos_failed_pods.yaml" ]]; then
+  COUNT=$(grep "Namespace:" "$LOGPATH/mos_failed_pods.yaml" | wc -l)
+  echo "Total MOS Non-Running Pods: $COUNT" >>"$OUT"
+fi
+
+# 4. Networking Issues
+echo -e "\n## 🌐 NETWORKING & CONNECTIVITY:" >>"$OUT"
+grep -h "🛑 ALERT: IP RANGE OVERLAPS DETECTED!" "$LOGPATH"/*subnet.yaml 2>/dev/null && echo ">>> [!] CRITICAL: IP Overlaps detected! Check Subnet cards." >>"$OUT" || echo "No IP overlaps detected." >>"$OUT"
+
+# 5. Top Errors & Blockers
+echo -e "\n## 🔍 TOP CRITICAL ERRORS & BLOCKERS:" >>"$OUT"
+grep -hEi "doesn't have specified device|denied|forbidden|context deadline exceeded|failed to call webhook" "$LOGPATH"/*.yaml 2>/dev/null | sort | uniq -c | sort -nr | head -n 10 >>"$OUT"
+
 # --- FINAL GENERATION BLOCK ---
 if [[ -n "$MCCNAME" ]] || [[ -n "$MOSNAME" ]]; then
   echo "Finalizing Dashboard UI..."
-  # 1. & 2. Strict Normalization
+  
+  # 1. & 2. Strict Normalization (Move this BEFORE Summary)
   for f in "$LOGPATH"/*; do
     filename=$(basename "$f")
     [[ "$filename" == *.html || "$filename" == "files" ]] && continue
+    # Skip summary if it's already there (shouldn't be yet in this new flow)
+    [[ "$filename" == "summary" || "$filename" == "summary.yaml" ]] && continue
+    
     if [[ "$filename" != *_* ]]; then
       rm "$f"
       continue
@@ -1889,13 +2240,27 @@ if [[ -n "$MCCNAME" ]] || [[ -n "$MOSNAME" ]]; then
     [[ "$filename" != *.yaml ]] && mv "$f" "$f.yaml"
   done
 
+  # Re-extract versions for header
+  MCC_VER_STR=""
+  if [[ -n "$MCCNAME" ]]; then
+     MCC_FILE=$(grep "cluster.k8s.io/clusters/$MCCNAME.yaml" "$LOGPATH/files" | head -n 1)
+     [[ -f "$MCC_FILE" ]] && MCC_VER_STR=" (KaaS: $(yq eval '.Object.spec.providerSpec.value.kaas.release // .spec.providerSpec.value.kaas.release' "$MCC_FILE" 2>/dev/null))"
+  fi
+  MOS_VER_STR=""
+  if [[ -n "$MOSNAME" ]]; then
+     MOS_STATUS_FILE=$(ls $MOS_DIR/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml 2>/dev/null | head -n 1)
+     [[ -f "$MOS_STATUS_FILE" ]] && MOS_VER_STR=" (Rel: $(grep -m1 "    release: " "$MOS_STATUS_FILE" | sed 's/.*release: //; s/[[:space:]]//g'))"
+  fi
+
   # 3. BUILD SIDEBAR LINKS
-  for yaml_file in $(ls "$LOGPATH"/*_*.yaml 2>/dev/null | sort); do
+  for yaml_file in $(ls "$LOGPATH"/*.yaml 2>/dev/null | sort); do
     [[ -e "$yaml_file" ]] || continue
     FILENAME=$(basename "$yaml_file")
     CATEGORY="cluster"
     [[ "$FILENAME" == mcc_* ]] && CATEGORY="mcc"
     [[ "$FILENAME" == mos_* ]] && CATEGORY="mos"
+    [[ "$FILENAME" == summary.yaml ]] && CATEGORY="all"
+    
     TITLE=$(basename "$yaml_file" .yaml | tr '_' ' ' | tr '[:lower:]' '[:upper:]')
     ANCHOR=$(echo "$TITLE" | tr ' ' '-')
     echo "<li data-category='$CATEGORY'><a href='javascript:void(0)' onclick=\"toggleCard(this, '$ANCHOR')\">$TITLE</a></li>" >>"$HTML_REPORT"
@@ -1905,14 +2270,16 @@ if [[ -n "$MCCNAME" ]] || [[ -n "$MOSNAME" ]]; then
   printf "\n</ul>\n</nav>\n<main class=\"main-content\">\n" >>"$HTML_REPORT"
   cat <<EOF >>"$HTML_REPORT"
 <button class="toggle-sidebar-btn" onclick="toggleSidebar()" title="Toggle Sidebar">◀</button>
-<div class="header">
-    <h1>Myrha - Mirantis Supportdump Dashboard</h1>
-    <p>
-        <strong>Management (MCC):</strong> ${MCCNAME:-N/A} 
-        ${MOSNAME:+ | <strong>Managed (MOSK):</strong> $MOSNAME}
-        <br>
-        <small>Generated: $DATE</small>
-    </p>
+<div class="header" style="display: flex; justify-content: space-between; align-items: flex-start;">
+    <div>
+        <h1>Myrha - Mirantis Supportdump Dashboard</h1>
+        <p>
+            <strong>Management (MCC):</strong> ${MCCNAME:-N/A}${MCC_VER_STR}
+            ${MOSNAME:+ | <strong>Managed (MOSK):</strong> $MOSNAME}${MOS_VER_STR}
+            <br>
+            <small>Generated: $DATE</small>
+        </p>
+    </div>
 </div>
 <div id="placeholder" class="placeholder-msg">
     <h2>Empty</h2>
@@ -1921,7 +2288,7 @@ if [[ -n "$MCCNAME" ]] || [[ -n "$MOSNAME" ]]; then
 EOF
 
   # 5. BUILD CONTENT CARDS
-  for yaml_file in $(ls "$LOGPATH"/*_*.yaml 2>/dev/null | sort); do
+  for yaml_file in $(ls "$LOGPATH"/*.yaml 2>/dev/null | sort); do
     [[ -e "$yaml_file" ]] || continue
     TITLE=$(basename "$yaml_file" .yaml | tr '_' ' ' | tr '[:lower:]' '[:upper:]')
     ANCHOR=$(echo "$TITLE" | tr ' ' '-')
@@ -1949,6 +2316,7 @@ EOF
     } >>"$HTML_REPORT"
   done
 
+
   # 6. CLOSE DOCUMENT
   printf "\n</main>\n" >>"$HTML_REPORT"
   cat <<EOF >>"$HTML_REPORT"
@@ -1956,8 +2324,8 @@ EOF
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
 <script>
     window.onload = () => {
-        // Auto-select MCC and MOS clusters by default
-        ['MCC-CLUSTER', 'MOS-CLUSTER'].forEach(anchor => {
+        // Auto-select Summary and Clusters by default
+        ['SUMMARY', 'MCC-CLUSTER', 'MOS-CLUSTER'].forEach(anchor => {
             const link = document.querySelector(\`#sidebarList a[onclick*="'\${anchor}'"]\`);
             if (link) toggleCard(link, anchor);
         });
@@ -1966,11 +2334,9 @@ EOF
 </body>
 </html>
 EOF
+
   echo "✅ Dashboard ready: $HTML_REPORT"
   open "$HTML_REPORT" 2>/dev/null
-  #/Applications/Sublime\ Text.app/Contents/SharedSupport/bin/subl --new-window --command $LOGPATH/*.yaml 2> /dev/null
-  #nvim -R -c 'silent argdo set syntax=yaml' -p $LOGPATH/*_*
-  #nvim -R -p $LOGPATH/*.yaml
 fi
 if [[ -z "$MCCNAME" ]] && [[ -z "$MOSNAME" ]]; then
   # Delete myrha folder as neither MCC and MOS clusters were found:
