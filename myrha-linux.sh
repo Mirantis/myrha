@@ -220,7 +220,14 @@ cat <<'EOF' >"$HTML_REPORT"
         }
     }
     const searchStates = {};
+    const searchDebounce = {};
+
     function performSearch(anchor, query) {
+        clearTimeout(searchDebounce[anchor]);
+        searchDebounce[anchor] = setTimeout(() => executeSearch(anchor, query), 300);
+    }
+
+    function executeSearch(anchor, query) {
         const card = document.getElementById(anchor);
         const code = card.querySelector('code');
         const counter = card.querySelector('.search-count');
@@ -1914,7 +1921,6 @@ EOF
       echo "      <span class='btn-tool' onclick=\"toggleFullScreen(this, '$ANCHOR')\">Full Screen</span>"
       echo "      <span class='btn-tool btn-copy' onclick=\"copyToClipboard(this, '$ANCHOR')\">Copy</span>"
       echo "      <span class='btn-tool wrap-btn' onclick=\"toggleBlockWrap(this, '$ANCHOR')\">Wrap: OFF</span>"
-      echo "      <a href='#' class='back-to-top'>Top</a>"
       echo "    </div>"
       echo "  </h2>"
       echo "  <pre class='language-yaml raw-code'><code>"
