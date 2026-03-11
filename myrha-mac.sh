@@ -1,4 +1,10 @@
 #!/bin/bash
+# Check if running in bash
+if [ -z "$BASH_VERSION" ]; then
+    echo "ERROR: This script MUST be run with bash. Please run it as: bash $0"
+    exit 1
+fi
+
 # Declare variables
 DATE=$(date +"%d-%m-%Y-%H-%M-%S")
 GREP="grep --color=auto"
@@ -296,6 +302,83 @@ cat <<'EOF' >"$HTML_REPORT"
         <input type="text" class="search-box" id="sidebarSearch" placeholder="Filter sections..." onkeyup="filterSidebar()">
         <ul id="sidebarList">
 EOF
+# --- KNOWN ISSUES AUTO-DIAGNOSTIC ---
+check_known_issues() {
+  local MOS_VER_RAW="$1"
+  local MCC_VER_RAW="$2"
+  local OUT="$LOGPATH/cluster_known_issues"
+  
+  # Extract versions
+  local MOS_VER="0.0.0"
+  if [[ "$MOS_VER_RAW" =~ ([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+(\.[0-9]+)*) ]]; then
+      MOS_VER="${BASH_REMATCH[2]}"
+  elif [[ "$MOS_VER_RAW" =~ ([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+      MOS_VER="${BASH_REMATCH[1]}"
+  fi
+
+  local MCC_VER="$MCC_VER_RAW"
+  [[ -z "$MCC_VER" || "$MCC_VER" == "0.0.0" ]] && if [[ -f "$LOGPATH/mcc_upgrade_audit.yaml" ]]; then
+    MCC_VER=$(grep "KaaS Release:" "$LOGPATH/mcc_upgrade_audit.yaml" | awk '{print $NF}' | sed 's/kaas-//' | tr '-' '.')
+  fi
+  [[ -z "$MCC_VER" ]] && MCC_VER="0.0.0"
+
+  echo "Running Version-Specific Known Issues Diagnostic..."
+  echo "MOS Version: $MOS_VER, MCC Version: $MCC_VER"
+  
+  echo "################# [CLUSTER KNOWN ISSUES AUTO-DIAGNOSTIC] #################" >"$OUT"
+  echo "MOS Version: $MOS_VER" >>"$OUT"
+  echo "MCC Version: $MCC_VER" >>"$OUT"
+  echo "----------------------------------------------------" >>"$OUT"
+
+  # Define issues as: ID | Product (MOS/MCC/ALL) | MinVer | MaxVer | Title | Pattern | SearchPath | URL
+  source "$(dirname "$0")/issues_array.sh"
+
+  # Helper function for version comparison
+  version_ge() { [[ "$(printf '%s\n%s' "$2" "$1" | sort -V | head -n1)" == "$2" ]]; }
+  version_le() { [[ "$(printf '%s\n%s' "$1" "$2" | sort -V | head -n1)" == "$1" ]]; }
+
+  local FOUND_ANY=false
+  for issue in "${ISSUES[@]}"; do
+    IFS="|" read -r ID PROD MIN_VER MAX_VER TITLE PATTERN SEARCH_PATH ISSUE_URL <<< "$issue"
+    # Trim whitespace
+    ID=$(echo "$ID" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'); PROD=$(echo "$PROD" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'); MIN_VER=$(echo "$MIN_VER" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    MAX_VER=$(echo "$MAX_VER" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'); TITLE=$(echo "$TITLE" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'); PATTERN=$(echo "$PATTERN" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    SEARCH_PATH=$(echo "$SEARCH_PATH" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'); ISSUE_URL=$(echo "$ISSUE_URL" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    
+    [[ -z "$ID" ]] && continue
+
+    # Version Filtering
+    local CURRENT_VER="0.0.0"
+    [[ "$PROD" == "MOS" ]] && CURRENT_VER="$MOS_VER"
+    [[ "$PROD" == "MCC" ]] && CURRENT_VER="$MCC_VER"
+    [[ "$PROD" == "ALL" ]] && CURRENT_VER="$MOS_VER"
+    
+    if [[ "$PROD" != "ALL" && "$MIN_VER" != "0.0.0" ]]; then
+        if ! version_ge "$CURRENT_VER" "$MIN_VER" || ! version_le "$CURRENT_VER" "$MAX_VER"; then
+            continue
+        fi
+    fi
+
+    [[ ! -d "$SEARCH_PATH" ]] && continue
+    [[ -z "$PATTERN" ]] && continue
+
+    MATCHES=$(grep -rEi "$PATTERN" "$SEARCH_PATH" 2>/dev/null | head -n 5)
+    if [[ -n "$MATCHES" ]]; then
+      FOUND_ANY=true
+      echo "[!] POTENTIAL MATCH FOUND: $ID - $TITLE" >>"$OUT"
+      [[ -n "$ISSUE_URL" ]] && echo "    URL: $ISSUE_URL" >>"$OUT"
+      echo "    Pattern: $PATTERN" >>"$OUT"
+      echo "    Evidence (last 5 matches):" >>"$OUT"
+      echo "$MATCHES" | sed 's/^/      /' >>"$OUT"
+      echo "----------------------------------------------------" >>"$OUT"
+    fi
+  done
+
+  if [ "$FOUND_ANY" = false ]; then
+    echo "No specific CLUSTER Known Issues were automatically detected for version $MOS_VER / $MCC_VER." >>"$OUT"
+  fi
+}
+
 # --- IP Overlap Check Function ---
 check_overlaps() {
   python3 - <<EOF
@@ -492,6 +575,29 @@ MCC_DIR=$(find "$BASE_DIR" -type d -name "kaas-mgmt" | head -n 1)
 # Refined discovery to avoid including 'objects' in the root if already present
 MOS_DIR=$(find "$BASE_DIR" -type d -name "mos" -not -path "*/objects/*" | head -n 1)
 
+# Detect MCC Version
+MCC_VER_DETECTED="0.0.0"
+if [[ -n "$MCC_DIR" ]]; then
+  MCC_FILE=$(find "$MCC_DIR" -path "*/default/cluster.k8s.io/clusters/*.yaml" 2>/dev/null | head -n 1)
+  if [[ -f "$MCC_FILE" ]]; then
+     MCC_VER_DETECTED=$(yq eval '.Object.spec.providerSpec.value.kaas.release // .spec.providerSpec.value.kaas.release' "$MCC_FILE" 2>/dev/null | sed 's/kaas-//' | tr '-' '.')
+  fi
+fi
+
+# Detect MOS Version
+MOS_VER_DETECTED="0.0.0"
+if [[ -n "$MOS_DIR" ]]; then
+  MOS_STATUS_FILE=$(find "$MOS_DIR" -path "*/lcm.mirantis.com/openstackdeploymentstatus/*.yaml" 2>/dev/null | head -n 1)
+  if [[ -n "$MOS_STATUS_FILE" ]]; then
+    REL_RAW=$(grep -m1 "    release: " "$MOS_STATUS_FILE" | sed -e 's/.*release: //' -e 's/[[:space:]]//g' -e 's/+/./g' -e 's/\.$//')
+    IFS='.' read -r -a V <<<"$REL_RAW"
+    MOS_VER_DETECTED="${V[0]}.${V[1]}.${V[2]}+${V[3]}.${V[4]}${V[5]:+.${V[5]}}"
+  fi
+fi
+
+# Run Known Issues Diagnostic EARLY
+check_known_issues "$MOS_VER_DETECTED" "$MCC_VER_DETECTED"
+
 if [[ -n "$MCC_DIR" ]]; then
   MCC_FILE=$(find "$MCC_DIR" -path "*/default/cluster.k8s.io/clusters/*.yaml" 2>/dev/null | head -n 1)
   if [[ -f "$MCC_FILE" ]]; then
@@ -523,10 +629,11 @@ if [[ -n "$MOSNAME" ]]; then
   MOS_STATUS_FILE=$(find "$MOS_DIR" -path "*/lcm.mirantis.com/openstackdeploymentstatus/*.yaml" 2>/dev/null | head -n 1)
   if [[ -n "$MOS_STATUS_FILE" ]]; then
     # Unified split for MOS (e.g., 21.0.0+25.2.9)
-    REL_RAW=$(grep -m1 "    release: " "$MOS_STATUS_FILE" | sed -e 's/.*release: //' -e 's/[[:space:]]//g' -e 's/+/./g')
+    REL_RAW=$(grep -m1 "    release: " "$MOS_STATUS_FILE" | sed -e 's/.*release: //' -e 's/[[:space:]]//g' -e 's/+/./g' -e 's/\.$//')
     IFS='.' read -r -a V <<<"$REL_RAW"
     # V[0]=VER1, V[1]=VER2, V[2]=VER3, V[3]=VER4, V[4]=VER5, V[5]=VER6
-    printf "## MOS release details (Managed): ${V[0]}.${V[1]}.${V[2]}+${V[3]}.${V[4]}.${V[5]}" >>"$OUT"
+    MOS_VER_FULL="${V[0]}.${V[1]}.${V[2]}+${V[3]}.${V[4]}${V[5]:+.${V[5]}}"
+    printf "## MOS release details (Managed): $MOS_VER_FULL" >>"$OUT"
     echo "" >>"$OUT"
     if (($(echo "${V[3]}.${V[4]} >= 25.2" | bc -l))); then
       echo "https://docs.mirantis.com/mosk/25.2/release-notes/25.2-series/25.2.${V[5]}.html" | sed 's/\.\././' >>"$OUT"
@@ -534,7 +641,7 @@ if [[ -n "$MOSNAME" ]]; then
       echo "https://docs.mirantis.com/mosk/25.1-and-earlier/release-notes/release-notes-mosk-old/${V[3]}.${V[4]}-series/${V[3]}.${V[4]}.${V[5]}.html" | sed 's/\.\././' >>"$OUT"
     fi
     echo "" >>"$OUT"
-    MOS_BUG_VER="${V[3]}.${V[4]}.${V[5]}"
+    MOS_BUG_VER="${V[3]}.${V[4]}${V[5]:+.${V[5]}}"
     printf "## MOS Bugs - $MOS_BUG_VER:" >>"$OUT"
     echo "" >>"$OUT"
     # Full Jira Restoration (MOS)
@@ -1874,16 +1981,26 @@ if [[ -n "$MCCNAME" ]]; then
   fi
 fi
 
-# --- MCC FAILED PODS ---
+# --- MCC POD AUDIT ---
 if [[ -n "$MCC_DIR" ]]; then
   OUT="$LOGPATH/mcc_failed_pods"
-  echo "Auditing MCC Failed Pods..."
-  echo "################# [MCC NON-RUNNING PODS SUMMARY] #################" >"$OUT"
-  find "$MCC_DIR" -path "*/core/pods/*.yaml" -type f | while read -r f; do
+  echo "Auditing MCC Pods..."
+  echo "################# [MCC POD AUDIT (NON-RUNNING)] #################" >"$OUT"
+  
+  MCC_RUNNING=0; MCC_COMPLETED=0; MCC_NON_RUNNING=0
+  MCC_NON_RUNNING_LIST=""
+  
+  while read -r f; do
     PHASE=$(yq eval '.Object.status.phase // .status.phase' "$f" 2>/dev/null)
-    if [[ "$PHASE" != "Running" && "$PHASE" != "Succeeded" ]]; then
+    if [[ "$PHASE" == "Running" ]]; then
+      ((MCC_RUNNING++))
+    elif [[ "$PHASE" == "Succeeded" ]] || [[ "$PHASE" == "Completed" ]]; then
+      ((MCC_COMPLETED++))
+    else
+      ((MCC_NON_RUNNING++))
       NAME=$(yq eval '.Object.metadata.name // .metadata.name' "$f")
       NS=$(yq eval '.Object.metadata.namespace // .metadata.namespace' "$f")
+      MCC_NON_RUNNING_LIST+="    - $NS/$NAME ($PHASE)\n"
       REASON=$(yq eval '.Object.status.reason // .status.reason' "$f")
       echo "----------------------------------------------------" >>"$OUT"
       echo "Namespace: $NS | Pod: $NAME | Phase: $PHASE | Reason: ${REASON:-N/A}" >>"$OUT"
@@ -1899,19 +2016,29 @@ if [[ -n "$MCC_DIR" ]]; then
         done
       fi
     fi
-  done
+  done < <(find "$MCC_DIR" -path "*/core/pods/*.yaml" -type f)
 fi
 
-# --- MOS FAILED PODS ---
+# --- MOS POD AUDIT ---
 if [[ -n "$MOS_DIR" ]]; then
   OUT="$LOGPATH/mos_failed_pods"
-  echo "Auditing MOS Failed Pods..."
-  echo "################# [MOS NON-RUNNING PODS SUMMARY] #################" >"$OUT"
-  find "$MOS_DIR" -path "*/core/pods/*.yaml" -type f | while read -r f; do
+  echo "Auditing MOS Pods..."
+  echo "################# [MOS POD AUDIT (NON-RUNNING)] #################" >"$OUT"
+  
+  MOS_RUNNING=0; MOS_COMPLETED=0; MOS_NON_RUNNING=0
+  MOS_NON_RUNNING_LIST=""
+
+  while read -r f; do
     PHASE=$(yq eval '.Object.status.phase // .status.phase' "$f" 2>/dev/null)
-    if [[ "$PHASE" != "Running" && "$PHASE" != "Succeeded" ]]; then
+    if [[ "$PHASE" == "Running" ]]; then
+      ((MOS_RUNNING++))
+    elif [[ "$PHASE" == "Succeeded" ]] || [[ "$PHASE" == "Completed" ]]; then
+      ((MOS_COMPLETED++))
+    else
+      ((MOS_NON_RUNNING++))
       NAME=$(yq eval '.Object.metadata.name // .metadata.name' "$f")
       NS=$(yq eval '.Object.metadata.namespace // .metadata.namespace' "$f")
+      MOS_NON_RUNNING_LIST+="    - $NS/$NAME ($PHASE)\n"
       REASON=$(yq eval '.Object.status.reason // .status.reason' "$f")
       echo "----------------------------------------------------" >>"$OUT"
       echo "Namespace: $NS | Pod: $NAME | Phase: $PHASE | Reason: ${REASON:-N/A}" >>"$OUT"
@@ -1927,7 +2054,7 @@ if [[ -n "$MOS_DIR" ]]; then
         done
       fi
     fi
-  done
+  done < <(find "$MOS_DIR" -path "*/core/pods/*.yaml" -type f)
 fi
 
 # --- MCC LICENSE & RELEASES ---
@@ -2203,17 +2330,20 @@ else
   echo "MOS Stacklight namespace not found." >>"$OUT"
 fi
 
-# 4. Failed Pods Count
-echo -e "\n## ⚠️  NON-RUNNING PODS:" >>"$OUT"
-if [[ -f "$LOGPATH/mcc_failed_pods.yaml" ]]; then
-  COUNT=$(grep "Namespace:" "$LOGPATH/mcc_failed_pods.yaml" | wc -l)
-  echo "Total MCC Non-Running Pods: $COUNT" >>"$OUT"
+# 4. Pod Status Summary
+echo -e "\n## ⚠️  POD STATUS SUMMARY:" >>"$OUT"
+if [[ -n "$MCC_DIR" ]]; then
+  echo "Total MCC Pods: Running: ${MCC_RUNNING:-0} | Non-Running: ${MCC_NON_RUNNING:-0} | Completed: ${MCC_COMPLETED:-0}" >>"$OUT"
+  if [[ -n "$MCC_NON_RUNNING_LIST" ]]; then
+    echo -e "### Non-Running MCC Pods:\n$MCC_NON_RUNNING_LIST" >>"$OUT"
+  fi
 fi
-if [[ -f "$LOGPATH/mos_failed_pods.yaml" ]]; then
-  COUNT=$(grep "Namespace:" "$LOGPATH/mos_failed_pods.yaml" | wc -l)
-  echo "Total MOS Non-Running Pods: $COUNT" >>"$OUT"
+if [[ -n "$MOS_DIR" ]]; then
+  echo "Total MOS Pods: Running: ${MOS_RUNNING:-0} | Non-Running: ${MOS_NON_RUNNING:-0} | Completed: ${MOS_COMPLETED:-0}" >>"$OUT"
+  if [[ -n "$MOS_NON_RUNNING_LIST" ]]; then
+    echo -e "### Non-Running MOS Pods:\n$MOS_NON_RUNNING_LIST" >>"$OUT"
+  fi
 fi
-
 # 4. Networking Issues
 echo -e "\n## 🌐 NETWORKING & CONNECTIVITY:" >>"$OUT"
 grep -h "🛑 ALERT: IP RANGE OVERLAPS DETECTED!" "$LOGPATH"/*subnet.yaml 2>/dev/null && echo ">>> [!] CRITICAL: IP Overlaps detected! Check Subnet cards." >>"$OUT" || echo "No IP overlaps detected." >>"$OUT"
@@ -2249,7 +2379,7 @@ if [[ -n "$MCCNAME" ]] || [[ -n "$MOSNAME" ]]; then
   MOS_VER_STR=""
   if [[ -n "$MOSNAME" ]]; then
      MOS_STATUS_FILE=$(ls $MOS_DIR/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml 2>/dev/null | head -n 1)
-     [[ -f "$MOS_STATUS_FILE" ]] && MOS_VER_STR=" (Rel: $(grep -m1 "    release: " "$MOS_STATUS_FILE" | sed 's/.*release: //; s/[[:space:]]//g'))"
+     [[ -f "$MOS_STATUS_FILE" ]] && MOS_VER_STR=" (Rel: $(grep -m1 "    release: " "$MOS_STATUS_FILE" | sed 's/.*release: //; s/[[:space:]]//g; s/\.$//'))"
   fi
 
   # 3. BUILD SIDEBAR LINKS
@@ -2325,11 +2455,12 @@ EOF
 <script>
     window.onload = () => {
         // Auto-select Summary and Clusters by default
-        ['SUMMARY', 'MCC-CLUSTER', 'MOS-CLUSTER'].forEach(anchor => {
-            const link = document.querySelector(\`#sidebarList a[onclick*="'\${anchor}'"]\`);
+        ['SUMMARY', 'MCC-CLUSTER', 'MOS-CLUSTER', 'CLUSTER-KNOWN-ISSUES'].forEach(anchor => {
+            const link = Array.from(document.querySelectorAll('#sidebarList a')).find(a => a.getAttribute('onclick').includes("'" + anchor + "'"));
             if (link) toggleCard(link, anchor);
         });
     };
+
 </script>
 </body>
 </html>
