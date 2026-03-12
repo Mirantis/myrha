@@ -331,7 +331,307 @@ check_known_issues() {
   echo "----------------------------------------------------" >>"$OUT"
 
   # Define issues as: ID | Product (MOS/MCC/ALL) | MinVer | MaxVer | Title | Pattern | SearchPath | URL
-  source "$(dirname "$0")/issues_array.sh"
+  ISSUES=(
+    'KI-46671 | MOS | 0.0.0 | 25.1.1 | [46671] Cluster update fails with the `tf-config` pods crashed | tf-config-<ID>                            [0-9]/[0-9]     CrashLoopBackOff   [0-9]+ (<ID> ago)   <ID> | $MOS_DIR/objects'
+    'KI-49078 | MOS | 0.0.0 | 25.1 | [49078] Migration to containerd is stuck due to orphaned Docker containers | Orphaned Docker containers found after migration. Unable to proceed, please | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-47695 | MOS | 0.0.0 | 25.1.1 | [47695] Cinder database sync job fails during upgrade from Antelope to Caracal | <TIMESTAMP> 1 ERROR cinder pymysql.err.DataError: (1265, "Data truncated for column '\''use_quota'\'' at row 24") | $MOS_DIR/objects'
+    'KI-13755 | MOS | 24.3.5 | 24.3.5 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-42896 | MOS | 24.3.5 | 24.3.5 | [42896] Cassandra cluster contains extra node | Datacenter: dc1 | $MOS_DIR/objects'
+    'KI-53802,52253 | MOS | 0.0.0 | 25.2 | [53802, 52253] `telegrafDsSmart` causes OOM while scanning remote volumes | telegrafDsSmart: | $MOS_DIR/objects'
+    'KI-46671 | MOS | 0.0.0 | 25.1.1 | [46671] Cluster update fails with the `tf-config` pods crashed | tf-config-<ID>                            [0-9]/[0-9]     CrashLoopBackOff   [0-9]+ (<ID> ago)   <ID> | $MOS_DIR/objects'
+    'KI-49078 | MOS | 0.0.0 | 25.1 | [49078] Migration to containerd is stuck due to orphaned Docker containers | Orphaned Docker containers found after migration. Unable to proceed, please | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-13755 | MOS | 24.3.7 | 24.3.7 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-42896 | MOS | 24.3.7 | 24.3.7 | [42896] Cassandra cluster contains extra node | Datacenter: dc1 | $MOS_DIR/objects'
+    'KI-53802,52253 | MOS | 0.0.0 | 25.2 | [53802, 52253] `telegrafDsSmart` causes OOM while scanning remote volumes | telegrafDsSmart: | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-47695 | MOS | 0.0.0 | 25.1.1 | [47695] Cinder database sync job fails during upgrade from Antelope to Caracal | <TIMESTAMP> 1 ERROR cinder pymysql.err.DataError: (1265, "Data truncated for column '\''use_quota'\'' at row 24") | $MOS_DIR/objects'
+    'KI-13755 | MOS | 24.3.2 | 24.3.2 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-42896 | MOS | 24.3.2 | 24.3.2 | [42896] Cassandra cluster contains extra node | Datacenter: dc1 | $MOS_DIR/objects'
+    'KI-51524 | MOS | 0.0.0 | 24.3.5 | [51524] `sf-notifier` creates big amount of relogins to Salesforce | mirantis.azurecr.io/stacklight/sf-notifier:v0.4-20250113023013 | $MOS_DIR/objects'
+    'KI-53802,52253 | MOS | 0.0.0 | 25.2 | [53802, 52253] `telegrafDsSmart` causes OOM while scanning remote volumes | telegrafDsSmart: | $MOS_DIR/objects'
+    'KI-46671 | MOS | 0.0.0 | 25.1.1 | [46671] Cluster update fails with the `tf-config` pods crashed | tf-config-<ID>                            [0-9]/[0-9]     CrashLoopBackOff   [0-9]+ (<ID> ago)   <ID> | $MOS_DIR/objects'
+    'KI-49078 | MOS | 0.0.0 | 25.1 | [49078] Migration to containerd is stuck due to orphaned Docker containers | Orphaned Docker containers found after migration. Unable to proceed, please | $MOS_DIR/objects'
+    'KI-46671 | MOS | 0.0.0 | 25.1.1 | [46671] Cluster update fails with the `tf-config` pods crashed | tf-config-<ID>                            [0-9]/[0-9]     CrashLoopBackOff   [0-9]+ (<ID> ago)   <ID> | $MOS_DIR/objects'
+    'KI-49078 | MOS | 0.0.0 | 25.1 | [49078] Migration to containerd is stuck due to orphaned Docker containers | Orphaned Docker containers found after migration. Unable to proceed, please | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-47695 | MOS | 0.0.0 | 25.1.1 | [47695] Cinder database sync job fails during upgrade from Antelope to Caracal | <TIMESTAMP> 1 ERROR cinder pymysql.err.DataError: (1265, "Data truncated for column '\''use_quota'\'' at row 24") | $MOS_DIR/objects'
+    'KI-13755 | MOS | 24.3.3 | 24.3.3 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-42896 | MOS | 24.3.3 | 24.3.3 | [42896] Cassandra cluster contains extra node | Datacenter: dc1 | $MOS_DIR/objects'
+    'KI-51524 | MOS | 0.0.0 | 24.3.5 | [51524] `sf-notifier` creates big amount of relogins to Salesforce | mirantis.azurecr.io/stacklight/sf-notifier:v0.4-20250113023013 | $MOS_DIR/objects'
+    'KI-53802,52253 | MOS | 0.0.0 | 25.2 | [53802, 52253] `telegrafDsSmart` causes OOM while scanning remote volumes | telegrafDsSmart: | $MOS_DIR/objects'
+    'KI-46671 | MOS | 0.0.0 | 25.1.1 | [46671] Cluster update fails with the `tf-config` pods crashed | tf-config-<ID>                            [0-9]/[0-9]     CrashLoopBackOff   [0-9]+ (<ID> ago)   <ID> | $MOS_DIR/objects'
+    'KI-49078 | MOS | 0.0.0 | 25.1 | [49078] Migration to containerd is stuck due to orphaned Docker containers | Orphaned Docker containers found after migration. Unable to proceed, please | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-13755 | MOS | 24.3.6 | 24.3.6 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-42896 | MOS | 24.3.6 | 24.3.6 | [42896] Cassandra cluster contains extra node | Datacenter: dc1 | $MOS_DIR/objects'
+    'KI-53802,52253 | MOS | 0.0.0 | 25.2 | [53802, 52253] `telegrafDsSmart` causes OOM while scanning remote volumes | telegrafDsSmart: | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-47603 | MOS | 0.0.0 | 24.3.1 | [47603] Masakari fails during the OpenStack upgrade to Caracal | masakari_db_sync: docker-dev-kaas-local.docker.mirantis.net/openstack/masakari:caracal-jammy-20241028141054 | $MOS_DIR/objects'
+    'KI-47695 | MOS | 0.0.0 | 25.1.1 | [47695] Cinder database sync job fails during upgrade from Antelope to Caracal | <TIMESTAMP> 1 ERROR cinder pymysql.err.DataError: (1265, "Data truncated for column '\''use_quota'\'' at row 24") | $MOS_DIR/objects'
+    'KI-13755 | MOS | 24.3 | 24.3 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-42896 | MOS | 24.3 | 24.3 | [42896] Cassandra cluster contains extra node | Datacenter: dc1 | $MOS_DIR/objects'
+    'KI-53802,52253 | MOS | 0.0.0 | 25.2 | [53802, 52253] `telegrafDsSmart` causes OOM while scanning remote volumes | telegrafDsSmart: | $MOS_DIR/objects'
+    'KI-46671 | MOS | 0.0.0 | 25.1.1 | [46671] Cluster update fails with the `tf-config` pods crashed | tf-config-<ID>                            [0-9]/[0-9]     CrashLoopBackOff   [0-9]+ (<ID> ago)   <ID> | $MOS_DIR/objects'
+    'KI-47602 | MOS | 0.0.0 | 24.3.1 | [47602] Failed `designate-zone-setup` job blocks cluster update | Client Error for url: http://designate-api.openstack.svc.cluster.local:9001/v2/zones, | $MOS_DIR/objects'
+    'KI-46671 | MOS | 0.0.0 | 25.1.1 | [46671] Cluster update fails with the `tf-config` pods crashed | tf-config-<ID>                            [0-9]/[0-9]     CrashLoopBackOff   [0-9]+ (<ID> ago)   <ID> | $MOS_DIR/objects'
+    'KI-49078 | MOS | 0.0.0 | 25.1 | [49078] Migration to containerd is stuck due to orphaned Docker containers | Orphaned Docker containers found after migration. Unable to proceed, please | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-47695 | MOS | 0.0.0 | 25.1.1 | [47695] Cinder database sync job fails during upgrade from Antelope to Caracal | <TIMESTAMP> 1 ERROR cinder pymysql.err.DataError: (1265, "Data truncated for column '\''use_quota'\'' at row 24") | $MOS_DIR/objects'
+    'KI-13755 | MOS | 24.3.4 | 24.3.4 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-42896 | MOS | 24.3.4 | 24.3.4 | [42896] Cassandra cluster contains extra node | Datacenter: dc1 | $MOS_DIR/objects'
+    'KI-51524 | MOS | 0.0.0 | 24.3.5 | [51524] `sf-notifier` creates big amount of relogins to Salesforce | mirantis.azurecr.io/stacklight/sf-notifier:v0.4-20250113023013 | $MOS_DIR/objects'
+    'KI-53802,52253 | MOS | 0.0.0 | 25.2 | [53802, 52253] `telegrafDsSmart` causes OOM while scanning remote volumes | telegrafDsSmart: | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-47695 | MOS | 0.0.0 | 25.1.1 | [47695] Cinder database sync job fails during upgrade from Antelope to Caracal | <TIMESTAMP> 1 ERROR cinder pymysql.err.DataError: (1265, "Data truncated for column '\''use_quota'\'' at row 24") | $MOS_DIR/objects'
+    'KI-13755 | MOS | 24.3.1 | 24.3.1 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-42896 | MOS | 24.3.1 | 24.3.1 | [42896] Cassandra cluster contains extra node | Datacenter: dc1 | $MOS_DIR/objects'
+    'KI-51524 | MOS | 0.0.0 | 24.3.5 | [51524] `sf-notifier` creates big amount of relogins to Salesforce | mirantis.azurecr.io/stacklight/sf-notifier:v0.4-20250113023013 | $MOS_DIR/objects'
+    'KI-53802,52253 | MOS | 0.0.0 | 25.2 | [53802, 52253] `telegrafDsSmart` causes OOM while scanning remote volumes | telegrafDsSmart: | $MOS_DIR/objects'
+    'KI-46671 | MOS | 0.0.0 | 25.1.1 | [46671] Cluster update fails with the `tf-config` pods crashed | tf-config-<ID>                            [0-9]/[0-9]     CrashLoopBackOff   [0-9]+ (<ID> ago)   <ID> | $MOS_DIR/objects'
+    'KI-49078 | MOS | 0.0.0 | 25.1 | [49078] Migration to containerd is stuck due to orphaned Docker containers | Orphaned Docker containers found after migration. Unable to proceed, please | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-45879 | MOS | 0.0.0 | 24.2.1 | [45879] [Antelope] Incorrect packet handling between instance and its gateway | neutron_openvswitch_agent: mirantis.azurecr.io/openstack/neutron:antelope-jammy-20240816113600 | $MOS_DIR/objects'
+    'KI-13755 | MOS | 24.1.3 | 24.1.3 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-39768 | MOS | 0.0.0 | 24.2 | [39768] OpenStack Controller exporter fails to start | OSCTL_EXPORTER_MAX_POLL_TIMEOUT: 900 | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-45879 | MOS | 0.0.0 | 24.2.1 | [45879] [Antelope] Incorrect packet handling between instance and its gateway | neutron_openvswitch_agent: mirantis.azurecr.io/openstack/neutron:antelope-jammy-20240816113600 | $MOS_DIR/objects'
+    'KI-13755 | MOS | 24.1.1 | 24.1.1 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-45879 | MOS | 0.0.0 | 24.2.1 | [45879] [Antelope] Incorrect packet handling between instance and its gateway | neutron_openvswitch_agent: mirantis.azurecr.io/openstack/neutron:antelope-jammy-20240816113600 | $MOS_DIR/objects'
+    'KI-13755 | MOS | 24.1.5 | 24.1.5 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-42896 | MOS | 24.1.5 | 24.1.5 | [42896] Cassandra cluster contains extra node | Datacenter: dc1 | $MOS_DIR/objects'
+    'KI-42903 | MOS | 0.0.0 | 24.2 | [42903] Inconsistent handling of missing pools by ceph-controller | ceph auth get client.nova -o /tmp/nova.key | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-45879 | MOS | 0.0.0 | 24.2.1 | [45879] [Antelope] Incorrect packet handling between instance and its gateway | neutron_openvswitch_agent: mirantis.azurecr.io/openstack/neutron:antelope-jammy-20240816113600 | $MOS_DIR/objects'
+    'KI-13755 | MOS | 24.1.6 | 24.1.6 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-42896 | MOS | 24.1.6 | 24.1.6 | [42896] Cassandra cluster contains extra node | Datacenter: dc1 | $MOS_DIR/objects'
+    'KI-42903 | MOS | 0.0.0 | 24.2 | [42903] Inconsistent handling of missing pools by ceph-controller | ceph auth get client.nova -o /tmp/nova.key | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-45879 | MOS | 0.0.0 | 24.2.1 | [45879] [Antelope] Incorrect packet handling between instance and its gateway | neutron_openvswitch_agent: mirantis.azurecr.io/openstack/neutron:antelope-jammy-20240816113600 | $MOS_DIR/objects'
+    'KI-13755 | MOS | 24.1.4 | 24.1.4 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-39768 | MOS | 0.0.0 | 24.2 | [39768] OpenStack Controller exporter fails to start | OSCTL_EXPORTER_MAX_POLL_TIMEOUT: 900 | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-45879 | MOS | 0.0.0 | 24.2.1 | [45879] [Antelope] Incorrect packet handling between instance and its gateway | neutron_openvswitch_agent: mirantis.azurecr.io/openstack/neutron:antelope-jammy-20240816113600 | $MOS_DIR/objects'
+    'KI-13755 | MOS | 24.1 | 24.1 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-45879 | MOS | 0.0.0 | 24.2.1 | [45879] [Antelope] Incorrect packet handling between instance and its gateway | neutron_openvswitch_agent: mirantis.azurecr.io/openstack/neutron:antelope-jammy-20240816113600 | $MOS_DIR/objects'
+    'KI-13755 | MOS | 24.1.7 | 24.1.7 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-42896 | MOS | 24.1.7 | 24.1.7 | [42896] Cassandra cluster contains extra node | Datacenter: dc1 | $MOS_DIR/objects'
+    'KI-42903 | MOS | 0.0.0 | 24.2 | [42903] Inconsistent handling of missing pools by ceph-controller | ceph auth get client.nova -o /tmp/nova.key | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-45879 | MOS | 0.0.0 | 24.2.1 | [45879] [Antelope] Incorrect packet handling between instance and its gateway | neutron_openvswitch_agent: mirantis.azurecr.io/openstack/neutron:antelope-jammy-20240816113600 | $MOS_DIR/objects'
+    'KI-13755 | MOS | 24.1.2 | 24.1.2 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-13755 | MOS | 25.1.1 | 25.1.1 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-42896 | MOS | 25.1.1 | 25.1.1 | [42896] Cassandra cluster contains extra node | Datacenter: dc1 | $MOS_DIR/objects'
+    'KI-47396 | MOS | 25.1.1 | 25.1.1 | [47396] Exceeding the number of Cassandra tombstone | ALTER TABLE config_db_uuid.obj_uuid_table WITH gc_grace_seconds = 10; | $MOS_DIR/objects'
+    'KI-53802,52253 | MOS | 0.0.0 | 25.2 | [53802, 52253] `telegrafDsSmart` causes OOM while scanning remote volumes | telegrafDsSmart: | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-47695 | MOS | 0.0.0 | 25.1.1 | [47695] Cinder database sync job fails during upgrade from Antelope to Caracal | <TIMESTAMP> 1 ERROR cinder pymysql.err.DataError: (1265, "Data truncated for column '\''use_quota'\'' at row 24") | $MOS_DIR/objects'
+    'KI-13755 | MOS | 25.1 | 25.1 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-42896 | MOS | 25.1 | 25.1 | [42896] Cassandra cluster contains extra node | Datacenter: dc1 | $MOS_DIR/objects'
+    'KI-47396 | MOS | 25.1 | 25.1 | [47396] Exceeding the number of Cassandra tombstone | ALTER TABLE config_db_uuid.obj_uuid_table WITH gc_grace_seconds = 10; | $MOS_DIR/objects'
+    'KI-51524 | MOS | 0.0.0 | 24.3.5 | [51524] `sf-notifier` creates big amount of relogins to Salesforce | mirantis.azurecr.io/stacklight/sf-notifier:v0.4-20250113023013 | $MOS_DIR/objects'
+    'KI-53802,52253 | MOS | 0.0.0 | 25.2 | [53802, 52253] `telegrafDsSmart` causes OOM while scanning remote volumes | telegrafDsSmart: | $MOS_DIR/objects'
+    'KI-46671 | MOS | 0.0.0 | 25.1.1 | [46671] Cluster update fails with the `tf-config` pods crashed | tf-config-<ID>                            [0-9]/[0-9]     CrashLoopBackOff   [0-9]+ (<ID> ago)   <ID> | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-13755 | MOS | 24.2.2 | 24.2.2 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-42896 | MOS | 24.2.2 | 24.2.2 | [42896] Cassandra cluster contains extra node | Datacenter: dc1 | $MOS_DIR/objects'
+    'KI-46220 | MOS | 0.0.0 | 24.2.3 | [46220] ClusterMaintenanceRequest stuck with Tungsten Fabric API v2 | creationTimestamp: "<TIMESTAMP>" | $MOS_DIR/objects'
+    'KI-46671 | MOS | 0.0.0 | 25.1.1 | [46671] Cluster update fails with the `tf-config` pods crashed | tf-config-<ID>                            [0-9]/[0-9]     CrashLoopBackOff   [0-9]+ (<ID> ago)   <ID> | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-13755 | MOS | 24.2.5 | 24.2.5 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-42896 | MOS | 24.2.5 | 24.2.5 | [42896] Cassandra cluster contains extra node | Datacenter: dc1 | $MOS_DIR/objects'
+    'KI-46671 | MOS | 0.0.0 | 25.1.1 | [46671] Cluster update fails with the `tf-config` pods crashed | tf-config-<ID>                            [0-9]/[0-9]     CrashLoopBackOff   [0-9]+ (<ID> ago)   <ID> | $MOS_DIR/objects'
+    'KI-47602 | MOS | 0.0.0 | 24.3.1 | [47602] Failed `designate-zone-setup` job blocks cluster update | Client Error for url: http://designate-api.openstack.svc.cluster.local:9001/v2/zones, | $MOS_DIR/objects'
+    'KI-51524 | MOS | 0.0.0 | 24.3.5 | [51524] `sf-notifier` creates big amount of relogins to Salesforce | mirantis.azurecr.io/stacklight/sf-notifier:v0.4-20250113023013 | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-45879 | MOS | 0.0.0 | 24.2.1 | [45879] [Antelope] Incorrect packet handling between instance and its gateway | neutron_openvswitch_agent: mirantis.azurecr.io/openstack/neutron:antelope-jammy-20240816113600 | $MOS_DIR/objects'
+    'KI-13755 | MOS | 24.2 | 24.2 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-40900 | MOS | 0.0.0 | 24.2.1 | [40900] Cassandra DB infinite table creation/changing state in Tungsten Fabric | Type     Reason     Age                  From     Message | $MOS_DIR/objects'
+    'KI-42896 | MOS | 24.2 | 24.2 | [42896] Cassandra cluster contains extra node | Datacenter: dc1 | $MOS_DIR/objects'
+    'KI-46671 | MOS | 0.0.0 | 25.1.1 | [46671] Cluster update fails with the `tf-config` pods crashed | tf-config-<ID>                            [0-9]/[0-9]     CrashLoopBackOff   [0-9]+ (<ID> ago)   <ID> | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-13755 | MOS | 24.2.1 | 24.2.1 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-42896 | MOS | 24.2.1 | 24.2.1 | [42896] Cassandra cluster contains extra node | Datacenter: dc1 | $MOS_DIR/objects'
+    'KI-46220 | MOS | 0.0.0 | 24.2.3 | [46220] ClusterMaintenanceRequest stuck with Tungsten Fabric API v2 | creationTimestamp: "<TIMESTAMP>" | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-13755 | MOS | 24.2.4 | 24.2.4 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-42896 | MOS | 24.2.4 | 24.2.4 | [42896] Cassandra cluster contains extra node | Datacenter: dc1 | $MOS_DIR/objects'
+    'KI-46671 | MOS | 0.0.0 | 25.1.1 | [46671] Cluster update fails with the `tf-config` pods crashed | tf-config-<ID>                            [0-9]/[0-9]     CrashLoopBackOff   [0-9]+ (<ID> ago)   <ID> | $MOS_DIR/objects'
+    'KI-47602 | MOS | 0.0.0 | 24.3.1 | [47602] Failed `designate-zone-setup` job blocks cluster update | Client Error for url: http://designate-api.openstack.svc.cluster.local:9001/v2/zones, | $MOS_DIR/objects'
+    'KI-51524 | MOS | 0.0.0 | 24.3.5 | [51524] `sf-notifier` creates big amount of relogins to Salesforce | mirantis.azurecr.io/stacklight/sf-notifier:v0.4-20250113023013 | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-13755 | MOS | 24.2.3 | 24.2.3 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-42896 | MOS | 24.2.3 | 24.2.3 | [42896] Cassandra cluster contains extra node | Datacenter: dc1 | $MOS_DIR/objects'
+    'KI-46671 | MOS | 0.0.0 | 25.1.1 | [46671] Cluster update fails with the `tf-config` pods crashed | tf-config-<ID>                            [0-9]/[0-9]     CrashLoopBackOff   [0-9]+ (<ID> ago)   <ID> | $MOS_DIR/objects'
+    'KI-47602 | MOS | 0.0.0 | 24.3.1 | [47602] Failed `designate-zone-setup` job blocks cluster update | Client Error for url: http://designate-api.openstack.svc.cluster.local:9001/v2/zones, | $MOS_DIR/objects'
+    'KI-51524 | MOS | 0.0.0 | 24.3.5 | [51524] `sf-notifier` creates big amount of relogins to Salesforce | mirantis.azurecr.io/stacklight/sf-notifier:v0.4-20250113023013 | $MOS_DIR/objects'
+    'BUG-8013 | MCC | 2.0.0 | 2.10.0 | [8013] Managed cluster deployment requiring PVs may fail | -o jsonpath='\''{.spec.volumes[?(@.persistentVolumeClaim)].persistentVolumeClaim.claimName}'\'' | $MCC_DIR/objects'
+    'BUG-2757 | MCC | 2.0.0 | 2.4.0 | [2757] IAM fails to start during management cluster deployment | -o jsonpath='\''{.data.MYSQL_DBADMIN_PASSWORD}'\'' | base64 -d ; echo | $MCC_DIR/objects'
+    'BUG-15698 | MCC | 2.8.0 | 2.11.0 | [15698] VIP is assigned to each manager node instead of a single node | firewall-cmd --add-rich-rule='\''rule protocol value="vrrp" accept'\'' --permanent | $MCC_DIR/objects'
+    'BUG-14080 | MCC | 0.0.0 | 0.0.0 | [14080] Node leaves the cluster after IP address change | Error: rpc error: code = Unknown desc = The swarm does not have a leader. | $MCC_DIR/objects'
+    'BUG-14458 | MCC | 2.7.0 | 2.9.0 | [14458] Failure to create a container for pod: cannot allocate memory | State:        Waiting | $MCC_DIR/objects'
+    'BUG-10424 | MCC | 0.0.0 | 0.0.0 | [10424] Regional cluster cleanup fails by timeout | ./bin/kind delete cluster --name clusterapi | $MCC_DIR/objects'
+    'BUG-10050 | MCC | 2.3.0 | 2.11.0 | [10050] Ceph OSD pod is in the CrashLoopBackOff state after disk replacement | ceph auth del osd.<ID> | $MCC_DIR/objects'
+    'BUG-13402 | MCC | 2.6.0 | 2.10.0 | [13402] Cluster fails with error: no space left on device | "default-ulimits": { | $MCC_DIR/objects'
+    'BUG-13845 | MCC | 2.7.0 | 2.11.0 | [13845] Cluster update fails during the LCM Agent upgrade with x509 error | lcmAgentUpgradeStatus:.*x509: certificate signed by unknown authority | $MCC_DIR/objects'
+    'BUG-6066 | MCC | 2.4.0 | 0.0.0 | [6066] Helm releases get stuck in FAILED or UNKNOWN state | finishedAt: "<TIMESTAMP>" | $MCC_DIR/objects'
+    'BUG-14125 | MCC | 2.8.0 | 2.10.0 | [14125] Inaccurate nodes readiness status on a managed cluster | ssh -i <sshPrivateKey> root@<controlPlaneNodeIP> | $MCC_DIR/objects'
+    'BUG-13292 | MCC | 2.7.0 | 0.0.0 | [13292] Local volume provisioner pod stuck in Terminating status after upgrade | kuebctl -n default delete pod <LVPPodName> --force | $MCC_DIR/objects'
+    'BUG-9899 | MCC | 2.3.0 | 2.14.0 | [9899] Helm releases get stuck in PENDING_UPGRADE during cluster update | ./helm --host=localhost:44134 history openstack-operator | $MCC_DIR/objects'
+    'BUG-8112 | MCC | 0.0.0 | 0.0.0 | [8112] Nodes occasionally become Not Ready on long-running clusters | ctr -n com.docker.ucp snapshot rm ucp-kubelet | $MCC_DIR/objects'
+    'BUG-17792 | MCC | 0.0.0 | 0.0.0 | [17792] Full preflight fails with a timeout waiting for BareMetalHost | preflight check failed: preflight full check failed: | $MCC_DIR/objects'
+    'BUG-18962 | MCC | 0.0.0 | 0.0.0 | [18962] Machine provisioning issues during cluster deployment | NAME                STATE       CONSUMER             BOOTMODE ONLINE ERROR REGION | $MCC_DIR/objects'
+    'BUG-19737 | MCC | 2.14.0 | 2.15.0 | [19737] The vSphere VM template build hangs with an empty kickstart file | Kickstart file /run/install/ks.cfg is missing | $MCC_DIR/objects'
+    'BUG-19468 | MCC | 2.13.0 | 2.15.0 | [19468] '\''Failed to remove finalizer from machine'\'' error during cluster deletion | Failed to remove finalizer from machine ... | $MCC_DIR/objects'
+    'BUG-18933 | MCC | 2.14.0 | 2.15.0 | [18933] Alerta pods fail to pass the readiness check | <TIMESTAMP>,865 DEBG '\''nginx'\'' stdout output: | $MCC_DIR/objects'
+    'BUG-20312 | MCC | 2.12.0 | 0.0.0 | [20312] Creation of ceph-based PVs gets stuck in *Pending* state | CSI_PROVISIONER_TOLERATIONS: \| | $MCC_DIR/objects'
+    'BUG-20298 | MCC | 2.14.0 | 2.15.0 | [20298] Spec validation failing during KaaSCephOperationRequest creation | spec in body should have at most 1 properties | $MCC_DIR/objects'
+    'BUG-20455 | MCC | 2.14.0 | 0.0.0 | [20455] Cluster upgrade fails on the LCMMachine CRD update | following error | $MCC_DIR/objects'
+    'BUG-4288 | MCC | 0.0.0 | 0.0.0 | [4288] Equinix and MOS managed clusters update failure | ctr -n com.docker.ucp snapshot rm ucp-kubelet | $MCC_DIR/objects'
+    'BUG-16379,23865 | MCC | 2.10.0 | 2.19.0 | [16379,23865] Cluster update fails with the FailedMount warning | -o jsonpath='\''{.items[?(@.spec.nodeName == "<nodeName>")].metadata.name}'\'' | $MCC_DIR/objects'
+    'BUG-9875 | MCC | 2.3.0 | 2.6.0 | [9875] Full preflight fails with a timeout waiting for BareMetalHost | failed to create BareMetal objects: failed to wait for objects of kinds BareMetalHost | $MCC_DIR/objects'
+    'BUG-10060 | MCC | 2.3.0 | 2.7.0 | [10060] Ceph OSD node removal fails | rook-ceph-mon-<ID>                              [0-9]/[0-9]  Running    [0-9]+  <ID> | $MCC_DIR/objects'
+    'BUG-9928 | MCC | 2.3.0 | 2.5.0 | [9928] Ceph rebalance during a managed cluster update | ceph osd set noout | $MCC_DIR/objects'
+    'BUG-11001 | MCC | 2.4.0 | 2.6.0 | [11001] Patroni pod fails to start | Local timeline=4 lsn=0/A000000 | $MCC_DIR/objects'
+    'BUG-11633 | MCC | 2.5.0 | 2.6.0 | [11633] A vSphere-based project cannot be cleaned up | - kaas.mirantis.com/credentials-secret | $MCC_DIR/objects'
+    'BUG-11468 | MCC | 2.5.0 | 2.6.0 | [11468] Pods using LVP PV are not mounted to LVP disk | findmnt /mnt/local-volumes/stacklight/elasticsearch-data/vol00 | $MCC_DIR/objects'
+    'BUG-10829 | MCC | 2.5.0 | 2.6.0 | [10829] Keycloak pods fail to start during a management cluster bootstrap | -Djboss.as.management.blocking.timeout=<RequiredValue> | $MCC_DIR/objects'
+    'BUG-12683 | MCC | 2.6.0 | 2.7.0 | [12683] The kaas-ipam pods restart on the vSphere region with IPAM disabled | Waiting for CRDs. [baremetalhosts.metal3.io clusters.cluster.k8s.io machines.cluster.k8s.io | $MCC_DIR/objects'
+    'BUG-13176 | MCC | 2.6.0 | 2.7.0 | [13176] ClusterNetwork settings may disappear from the cluster provider spec | version: 1.18.3 | $MCC_DIR/objects'
+    'BUG-13078 | MCC | 2.6.0 | 2.7.0 | [13078] Elasticsearch does not receive data from Fluentd | curl -XPUT -H "content-type: application/json" | $MCC_DIR/objects'
+    'BUG-8367 | MCC | 2.9.0 | 2.12.0 | [8367] Adding of a new manager node to a managed cluster hangs on Deploy stage | Status code was -1 and not [200]: Request failed: <urlopen error [Errno 111] Connection refused> | $MCC_DIR/objects'
+    'BUG-16718 | MCC | 2.10.0 | 2.12.0 | [16718] Equinix Metal provider fails to create machines with SSH keys error | Failed to create machine "kaas-mgmt-controlplane-0"... | $MCC_DIR/objects'
+    'BUG-16959 | MCC | 2.11.0 | 2.12.0 | [16959] Proxy-based regional cluster creation fails | ./bootstrap.sh deploy_regional | $MCC_DIR/objects'
+    'BUG-16146 | MCC | 0.0.0 | 0.0.0 | [16146] Stuck kubelet on the Cluster release 5.x.x series | an error on the server ("") has prevented the request from succeeding | $MCC_DIR/objects'
+    'BUG-16843 | MCC | 2.10.0 | 2.12.0 | [16843] Inability to override default route matchers for Salesforce notifier | Warning: Merging destination map for chart '\''stacklight'\''. Overwriting table | $MCC_DIR/objects'
+    'BUG-17771 | MCC | 2.10.0 | 2.13.0 | [17771] Watchdog alert missing in Salesforce route | Warning: Merging destination map for chart '\''stacklight'\''. Overwriting table | $MCC_DIR/objects'
+    'BUG-16873 | MCC | 2.10.0 | 2.12.0 | [16873] Bootstrap fails with '\''failed to establish connection with tiller'\'' error | clusterdeployer.go:164] Initialize Tiller in bootstrap cluster. | $MCC_DIR/objects'
+    'BUG-17477 | MCC | 2.11.0 | 2.12.0 | [17477] StackLight in HA mode is not deployed or cluster update is blocked | cluster release version upgrade is forbidden: | $MCC_DIR/objects'
+    'BUG-17412 | MCC | 2.11.0 | 0.0.0 | [17412] Cluster upgrade fails on the KaaSCephCluster CRD update | Upgrade "kaas-public-api" failed: | $MCC_DIR/objects'
+    'BUG-17069 | MCC | 2.11.0 | 2.12.0 | [17069] Cluster upgrade fails with the '\''Failed to configure Ceph cluster'\'' error | - message: '\''Failed to configure Ceph cluster: ceph cluster verification is failed: | $MCC_DIR/objects'
+    'BUG-17007 | MCC | 2.11.0 | 2.12.0 | [17007] False-positive '\''release: "squid-proxy" not found'\'' error | Helm charts not installed yet: squid-proxy | $MCC_DIR/objects'
+    'BUG-16964 | MCC | 2.11.0 | 2.12.0 | [16964] Management cluster upgrade gets stuck | mons are allowing insecure global_id reclaim | $MCC_DIR/objects'
+    'BUG-18076 | MCC | 2.11.0 | 2.13.0 | [18076] StackLight update failure | Upgrade "stacklight" failed: Job.batch "stacklight-delete-logging-pvcs-*" is invalid: spec.template: Invalid value: ... | $MCC_DIR/objects'
+    'BUG-16233 | MCC | 2.10.0 | 2.11.0 | [16233] Bare metal pods fail during upgrade due to Ceph not unmounting RBD | NAME                              READY   UP-TO-DATE   AVAILABLE   AGE | $MCC_DIR/objects'
+    'BUG-15766 | MCC | 2.10.0 | 2.11.0 | [15766] Cluster upgrade failure | error when evicting pods/"patroni-12-2" -n "stacklight" (will retry after 5s): | $MCC_DIR/objects'
+    'BUG-18752 | MCC | 0.0.0 | 0.0.0 | [18752] Bare metal hosts in '\''provisioned registration error'\'' state after update | errorMessage: '\''Host adoption failed: Error while attempting to adopt node  <UUID>: | $MCC_DIR/objects'
+    'BUG-18708 | MCC | 2.13.0 | 2.14.0 | [18708] '\''Pending'\'' state of machines during a cluster deployment or attachment | - lastTransitionTime: "<TIMESTAMP>" | $MCC_DIR/objects'
+    'BUG-17981 | MCC | 2.12.0 | 2.13.0 | [17981] Failure to redeploy a bare metal node with RAID 1 | sudo mdadm --detail --scan --verbose | $MCC_DIR/objects'
+    'BUG-17960 | MCC | 2.12.0 | 2.13.0 | [17960] Overflow of the Ironic storage volume | Filesystem                 Size  Used Avail Use% Mounted on | $MCC_DIR/objects'
+    'BUG-17359 | MCC | 2.12.0 | 2.13.0 | [17359] Deletion of AWS-based regional cluster credential fails | ./bin/kind get kubeconfig --name clusterapi > kubeconfig-bootstrap | $MCC_DIR/objects'
+    'BUG-42386 | MCC | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MCC_DIR/objects'
+    'BUG-24005 | MCC | 2.18.0 | 0.0.0 | [24005] Deletion of a node with ironic Pod is stuck in the *Terminating* state | related bare metal host is stuck in the ``deprovisioning`` | $MCC_DIR/objects'
+    'BUG-50566 | MCC | 2.27.0 | 2.29.3 | [50566] Ceph upgrade is very slow during patch or major cluster update | Warning  Unhealthy  57s (x16 over 3m27s)  kubelet  Startup probe failed: | $MCC_DIR/objects'
+    'BUG-26441 | MCC | 2.20.0 | 0.0.0 | [26441] Cluster update fails with the *MountDevice failed for volume* warning | -o jsonpath='\''{.items[?(@.spec.nodeName == "<nodeName>")].metadata.name}'\'' | $MCC_DIR/objects'
+    'BUG-31186,34132 | MCC | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MCC_DIR/objects'
+    'BUG-44193 | MCC | 2.26.0 | 2.29.0 | [44193] OpenSearch reaches 85% disk usage watermark affecting the cluster state | 0.8 × OpenSearch_PVC_Size_GB + Prometheus_PVC_Size_GB > 0.85 × Total_Storage_Capacity_GB | $MCC_DIR/objects'
+    'BUG-50637 | MCC | 2.29.0 | 0.0.0 | [50637] Ceph creates second *miracephnodedisable* object during node disabling | NAME                                               AGE   NODE NAME                                        STATE      LAST CHECK             ISSUE | $MCC_DIR/objects'
+    'BUG-50561 | MCC | 2.29.0 | 0.0.0 | [50561] The *local-volume-provisioner* pod switches to *CrashLoopBackOff* | local-volume-provisioner-h5lrc   0/1   CrashLoopBackOff   7 (5m12s ago)   14m   <IP>   <K8S-NODE-NAME>   <none>   <none> | $MCC_DIR/objects'
+    'BUG-35429 | MCC | 2.24.0 | 2.25.0 | [35429] The WireGuard interface does not have the IPv4 address assigned | ip a show wireguard.cali | $MCC_DIR/objects'
+    'BUG-34280 | MCC | 2.24.0 | 2.24.3 | [34280] No reconcile events generated during cluster update | Helm charts are not installed(upgraded) yet. Not ready releases: managed-lcm-api | $MCC_DIR/objects'
+    'BUG-34210 | MCC | 2.24.0 | 0.0.0 | [34210] Helm charts installation failure during cluster update | Helm charts are not installed(upgraded) yet. | $MCC_DIR/objects'
+    'BUG-33936 | MCC | 2.24.0 | 2.25.1 | [33936] Deletion failure of a controller node during machine replacement | Resolving dependency Service dhcp-lb in namespace kaas failed: | $MCC_DIR/objects'
+    'BUG-32761 | MCC | 2.23.5 | 2.26.0 | [32761] Node cleanup fails due to remaining devices | 88621.log:7389:<TIMESTAMP> 88621 ERROR ansible.plugins.callback.ironic_log | $MCC_DIR/objects'
+    'BUG-34247 | MCC | 2.24.0 | 0.0.0 | [34247] MKE backup fails during cluster update | chown -R nobody:nogroup /var/lib/docker/volumes/ucp-backup/_data | $MCC_DIR/objects'
+    'BUG-30294 | MCC | 2.23.0 | 2.28.4 | [30294] Replacement of a *master* node is stuck on the *calico-node* Pod start | alias calicoctl=" | $MCC_DIR/objects'
+    'BUG-35089 | MCC | 2.25.0 | 2.25.1 | [35089] Calico does not set up networking for a pod | felix/route_table.go 898: Syncing routes: found unexpected route; ignoring due to grace period. dest=<IP>/32 ifaceName="cali9731b965838" ifaceRegex="^cali." ipVersion=0x4 tableIndex=254 | $MCC_DIR/objects'
+    'BUG-5981 | MCC | 0.0.0 | 2.24.0 | [5981] Upgrade gets stuck on the cluster with more that 120 nodes | ID             NAME                     MODE         REPLICAS   IMAGE                          PORTS | $MCC_DIR/objects'
+    'BUG-27797 | MCC | 0.0.0 | 23.2 | [27797] A cluster '\''kubeconfig'\'' stops working during MKE minor version update | -o yaml <affectedClusterName>-kubeconfig \| awk '\''/admin.conf/ {print $2}'\'' \| | $MCC_DIR/objects'
+    'BUG-29604 | MCC | 2.22.0 | 2.24.0 | [29604] The '\''failed to get kubeconfig'\'' error during TLS configuration | "expirationTime": "<TIMESTAMP>", | $MCC_DIR/objects'
+    'BUG-30857 | MCC | 2.23.0 | 2.24.0 | [30857] Irrelevant error during Ceph OSD deployment on removable devices | shortClusterInfo: | $MCC_DIR/objects'
+    'BUG-30635 | MCC | 2.23.0 | 2.24.0 | [30635] Ceph '\''pg_autoscaler'\'' is stuck with the '\''overlapping roots'\'' error | failureDomain: host | $MCC_DIR/objects'
+    'BUG-31485 | MCC | 2.23.0 | 2.24.0 | [31485] Elasticsearch Curator does not delete indices as per retention period | -o custom-columns=CLUSTER:.metadata.name,NAMESPACE:.metadata.namespace,VERSION:.spec.providerSpec.value.release | $MCC_DIR/objects'
+    'BUG-29296 | MCC | 2.22.0 | 2.22.0 | [29296] Deployment of a managed cluster fails during provisioning | InspectionError: Failed to obtain hardware details. | $MCC_DIR/objects'
+    'BUG-30040 | MCC | 2.22.0 | 2.23.0 | [30040] OpenSearch is not in the '\''deployed'\'' status during cluster update | The stacklight/opensearch release of the stacklight/stacklight-bundle HelmBundle | $MCC_DIR/objects'
+    'BUG-29329 | MCC | 2.21.0 | 2.23.0 | [29329] Recreation of the Patroni container replica is stuck | INFO: doing crash recovery in a single user mode | $MCC_DIR/objects'
+    'BUG-46245 | MCC | 2.26.0 | 2.28.0 | [46245] Lack of access permissions for *HOC* and *HOCM* objects | - apiGroups: [kaas.mirantis.com] | $MCC_DIR/objects'
+    'BUG-41305 | MCC | 2.26.0 | 2.28.0 | [41305] DHCP responses are lost between *dnsmasq* and *dhcp-relay* pods | dhcp-relay-<ID>   [0-9]/[0-9]   Running   [0-9]+ (<ID> ago)   <ID>   <IP>     kaas-node-<UUID> | $MCC_DIR/objects'
+    'BUG-43164 | MCC | 2.27.0 | 2.28.0 | [43164] Rollover policy is not added to indicies created without a policy | <TIMESTAMP>,459 ERROR   Failed to complete action: delete_indices. | $MCC_DIR/objects'
+    'BUG-41540 | MCC | 2.26.0 | 2.26.5 | [41540] LCM Agent cannot grab storage information on a host | {"level":"error","ts":"<TIMESTAMP>","logger":"agent", | $MCC_DIR/objects'
+    'BUG-41819 | MCC | 2.26.0 | 2.27.0 | [41819] Graceful cluster reboot is blocked by the Ceph *ClusterWorkloadLocks* | message: ClusterMaintenanceRequest found, Ceph Cluster is not ready to upgrade, | $MCC_DIR/objects'
+    'BUG-42304 | MCC | 2.26.0 | 2.27.1 | [42304] Failure of shard relocation in the OpenSearch cluster | {created_by_kind="StatefulSet",created_by_name="opensearch-master",namespace="stacklight"} | $MCC_DIR/objects'
+    'BUG-40020 | MCC | 2.26.0 | 2.27.1 | [40020] Rollover policy update is not appllied to the current index | <TIMESTAMP>,459 ERROR   Failed to complete action: delete_indices.  <class '\''curator.exceptions.FailedExecution'\''>: Exception encountered.  Rerun with loglevel DEBUG and/or check Elasticsearch logs for more information. Exception: RequestError(400, '\''illegal_argument_exception'\'', '\''index [.ds-audit-000001] is the write index for data stream [audit] and cannot be deleted'\'') | $MCC_DIR/objects'
+    'BUG-50287 | MCC | 2.29.0 | 2.29.1 | [50287] BareMetalHost with a Redfish BMC address is stuck on registering phase | address: redfish://<IP>/redfish/v1/Systems/1 | $MCC_DIR/objects'
+    'BUG-50768 | MCC | 2.29.0 | 2.29.1 | [50768] Failure to update the *MCCUpgrade* object | HTTP response body: {"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure", | $MCC_DIR/objects'
+    'BUG-20651 | MCC | 2.15.0 | 2.21.0 | [20651] A cluster deployment or update fails with not ready compose deployments | '\''not ready: deployments: kube-system/compose got 0/0 replicas, kube-system/compose-api | $MCC_DIR/objects'
+    'BUG-26070 | MCC | 2.20.0 | 2.21.0 | [26070] RHEL system cannot be registered in Red Hat portal over MITM proxy | Unable to verify server'\''s identity: [SSL: CERTIFICATE_VERIFY_FAILED] | $MCC_DIR/objects'
+    'BUG-28134 | MCC | 2.21.0 | 2.22.0 | [28134] Failure to update a cluster with nodes in the '\''Prepare'\'' state | Error: error when evicting pods/"patroni-13-2" -n "stacklight": global timeout reached: 10m0s | $MCC_DIR/objects'
+    'BUG-27732-1 | MCC | 2.18.0 | 2.22.0 | [27732-1] OpenSearch PVC size custom settings are dismissed during deployment | -n <affectedClusterProjectName> | $MCC_DIR/objects'
+    'BUG-27732-2 | MCC | 2.18.0 | 2.22.0 | [27732-2] Custom settings for |ESlogstashRetentionTime| are dismissed | notifications: 10 | $MCC_DIR/objects'
+    'BUG-28783 | MCC | 2.21.0 | 2.22.0 | [28783] Ceph conditon stuck in absence of Ceph cluster secrets info | Failed to configure Ceph cluster: ceph cluster status info is not | $MCC_DIR/objects'
+    'BUG-26740 | MCC | 2.20.0 | 2.21.0 | [26740] Failure to upgrade a management cluster with a custom certificate | failed to update management cluster: | $MCC_DIR/objects'
+    'BUG-23853 | MCC | 2.17.0 | 2.18.0 | [23853] Replacement of a regional master node fails on bare metal and |EM| | osdRemoveStatus: | $MCC_DIR/objects'
+    'BUG-21810 | MCC | 2.15.0 | 0.0.0 | [21810] Upgrade to Cluster releases 5.22.0 and 7.5.0 may get stuck | containerd --version | $MCC_DIR/objects'
+    'BUG-24075 | MCC | 2.17.0 | 2.18.0 | [24075] Ubuntu 20.04 does not display for |aws-em| | NAME           AGE | $MCC_DIR/objects'
+    'BUG-22563 | MCC | 2.16.0 | 2.17.0 | [22563] Failure to deploy a bare metal node with RAID 1 | sudo mdadm --detail --scan --verbose | $MCC_DIR/objects'
+    'BUG-24806 | MCC | 2.18.0 | 2.19.0 | [24806] The dnsmasq parameters are not applied on multi-rack clusters | KUBECONFIG=kaas-mgmt-kubeconfig kubectl -n kaas logs --tail 50 deployment/dnsmasq -c dnsmasq-controller | $MCC_DIR/objects'
+    'BUG-20467 | MCC | 2.15.0 | 2.16.0 | [20467] Failure to deploy an Equinix Metal based management cluster | 0/3 nodes are available: 3 pod has unbound immediate PersistentVolumeClaims. | $MCC_DIR/objects'
+    'BUG-20189 | MCC | 2.15.0 | 2.16.0 | [20189] Container Cloud web UI reports upgrade while running previous release | Ceph public network address validation failed for cluster default/kaas-mgmt: invalid address '\''<IP>/0'\'' | $MCC_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-54430 | MOS | 25.2 | 25.2 | [54430] AMQP message delivery fails when message size exceeds RabbitMQ limit | oslo_messaging.exceptions.MessageDeliveryFailure: Unable to connect to AMQP server on openstack-neutron-rabbitmq-rabbitmq-0.rabbitmq-neutron.openstack.svc.cluster.local:5672 after inf tries: Basic.publish: (406) PRECONDITION_FAILED - message size 40744975 is larger than configured max size 16777216 | $MOS_DIR/objects'
+    'KI-13755 | MOS | 25.2 | 25.2 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-42896 | MOS | 25.2 | 25.2 | [42896] Cassandra cluster contains extra node | Datacenter: dc1 | $MOS_DIR/objects'
+    'KI-54195 | MOS | 25.2 | 25.2 | [54195] Ceph OSD experiencing slow operations in BlueStore during |mosk| | Failed to configure Ceph cluster: ceph cluster verification is failed: | $MOS_DIR/objects'
+    'KI-24005 | MOS | 2.18.0 | 0.0.0 | [24005] Deletion of a node with ironic Pod is stuck in the *Terminating* state | related bare metal host is stuck in the ``deprovisioning`` | $MOS_DIR/objects'
+    'KI-54944 | MOS | 25.2 | 25.2 | [54944] Management cluster update may get stuck during host OS upgrade | dpkg-divert: error: cannot divert directories | $MOS_DIR/objects'
+    'KI-54981 | MOS | 25.2 | 25.2 | [54981] |mgmt-upd| is stuck due to the invalid `BareMetalHostProfile` spec | {"level":"error","ts":"...","logger":"bm.manager","caller":"..." | $MOS_DIR/objects'
+    'KI-7947 | MOS | 0.0.0 | 25.2.2 | [7947] Docker panic causes its service restarts every 24 hours | Oct 12 21:20:11 kaas-node-<ID> dockerd[...]: created by github.com/docker/docker/internal/mirantis/telemetry.(*Telemetry).start in goroutine 1 | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-54430 | MOS | 25.2.3 | 25.2.3 | [54430] AMQP message delivery fails when message size exceeds RabbitMQ limit | oslo_messaging.exceptions.MessageDeliveryFailure: Unable to connect to AMQP server on openstack-neutron-rabbitmq-rabbitmq-0.rabbitmq-neutron.openstack.svc.cluster.local:5672 after inf tries: Basic.publish: (406) PRECONDITION_FAILED - message size 40744975 is larger than configured max size 16777216 | $MOS_DIR/objects'
+    'KI-13755 | MOS | 25.2.3 | 25.2.3 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-42896 | MOS | 25.2.3 | 25.2.3 | [42896] Cassandra cluster contains extra node | Datacenter: dc1 | $MOS_DIR/objects'
+    'KI-54195 | MOS | 25.2.3 | 25.2.3 | [54195] Ceph OSD experiencing slow operations in BlueStore during |mosk| | Failed to configure Ceph cluster: ceph cluster verification is failed: | $MOS_DIR/objects'
+    'KI-24005 | MOS | 2.18.0 | 0.0.0 | [24005] Deletion of a node with ironic Pod is stuck in the *Terminating* state | related bare metal host is stuck in the ``deprovisioning`` | $MOS_DIR/objects'
+    'KI-54981 | MOS | 25.2.3 | 25.2.3 | [54981] |mgmt-upd| is stuck due to the invalid `BareMetalHostProfile` spec | {"level":"error","ts":"...","logger":"bm.manager","caller":"..." | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-54430 | MOS | 25.2.2 | 25.2.2 | [54430] AMQP message delivery fails when message size exceeds RabbitMQ limit | oslo_messaging.exceptions.MessageDeliveryFailure: Unable to connect to AMQP server on openstack-neutron-rabbitmq-rabbitmq-0.rabbitmq-neutron.openstack.svc.cluster.local:5672 after inf tries: Basic.publish: (406) PRECONDITION_FAILED - message size 40744975 is larger than configured max size 16777216 | $MOS_DIR/objects'
+    'KI-13755 | MOS | 25.2.2 | 25.2.2 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-42896 | MOS | 25.2.2 | 25.2.2 | [42896] Cassandra cluster contains extra node | Datacenter: dc1 | $MOS_DIR/objects'
+    'KI-54195 | MOS | 25.2.2 | 25.2.2 | [54195] Ceph OSD experiencing slow operations in BlueStore during |mosk| | Failed to configure Ceph cluster: ceph cluster verification is failed: | $MOS_DIR/objects'
+    'KI-24005 | MOS | 2.18.0 | 0.0.0 | [24005] Deletion of a node with ironic Pod is stuck in the *Terminating* state | related bare metal host is stuck in the ``deprovisioning`` | $MOS_DIR/objects'
+    'KI-54981 | MOS | 25.2.2 | 25.2.2 | [54981] |mgmt-upd| is stuck due to the invalid `BareMetalHostProfile` spec | {"level":"error","ts":"...","logger":"bm.manager","caller":"..." | $MOS_DIR/objects'
+    'KI-31186,34132 | MOS | 2.24.0 | 0.0.0 | [31186,34132] Pods get stuck during MariaDB operations | [ERROR] WSREP: Corrupt buffer header: | $MOS_DIR/objects'
+    'KI-42386 | MOS | 2.24.0 | 0.0.0 | [42386] A load balancer service does not obtain the external IP address | stacklight  iam-proxy-prometheus  LoadBalancer  <IP>  <pending>  443:30430/TCP | $MOS_DIR/objects'
+    'KI-54430 | MOS | 25.2.1 | 25.2.1 | [54430] AMQP message delivery fails when message size exceeds RabbitMQ limit | oslo_messaging.exceptions.MessageDeliveryFailure: Unable to connect to AMQP server on openstack-neutron-rabbitmq-rabbitmq-0.rabbitmq-neutron.openstack.svc.cluster.local:5672 after inf tries: Basic.publish: (406) PRECONDITION_FAILED - message size 40744975 is larger than configured max size 16777216 | $MOS_DIR/objects'
+    'KI-13755 | MOS | 25.2.1 | 25.2.1 | [13755] TF pods switch to CrashLoopBackOff after a simultaneous reboot | Datacenter: DC1 | $MOS_DIR/objects'
+    'KI-42896 | MOS | 25.2.1 | 25.2.1 | [42896] Cassandra cluster contains extra node | Datacenter: dc1 | $MOS_DIR/objects'
+    'KI-54195 | MOS | 25.2.1 | 25.2.1 | [54195] Ceph OSD experiencing slow operations in BlueStore during |mosk| | Failed to configure Ceph cluster: ceph cluster verification is failed: | $MOS_DIR/objects'
+    'KI-24005 | MOS | 2.18.0 | 0.0.0 | [24005] Deletion of a node with ironic Pod is stuck in the *Terminating* state | related bare metal host is stuck in the ``deprovisioning`` | $MOS_DIR/objects'
+    'KI-54981 | MOS | 25.2.1 | 25.2.1 | [54981] |mgmt-upd| is stuck due to the invalid `BareMetalHostProfile` spec | {"level":"error","ts":"...","logger":"bm.manager","caller":"..." | $MOS_DIR/objects'
+    'KI-7947 | MOS | 0.0.0 | 25.2.2 | [7947] Docker panic causes its service restarts every 24 hours | Oct 12 21:20:11 kaas-node-<ID> dockerd[...]: created by github.com/docker/docker/internal/mirantis/telemetry.(*Telemetry).start in goroutine 1 | $MOS_DIR/objects'
+  )
+
 
   # Helper function for version comparison
   version_ge() { [[ "$(printf '%s\n%s' "$2" "$1" | sort -V | head -n1)" == "$2" ]]; }
@@ -362,7 +662,18 @@ check_known_issues() {
     [[ ! -d "$SEARCH_PATH" ]] && continue
     [[ -z "$PATTERN" ]] && continue
 
-    MATCHES=$(grep -rEi "$PATTERN" "$SEARCH_PATH" 2>/dev/null | head -n 5)
+    # Replace placeholders with regex patterns
+    local FINAL_PATTERN="$PATTERN"
+    # IP Address
+    FINAL_PATTERN=$(echo "$FINAL_PATTERN" | sed -E 's/<IP>/([0-9]{1,3}\.){3}[0-9]{1,3}/g')
+    # Timestamp (various formats)
+    FINAL_PATTERN=$(echo "$FINAL_PATTERN" | sed -E 's/<TIMESTAMP>/[0-9]{4}-[0-9]{2}-[0-9]{2}[ T,][0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{3})?/g')
+    # UUID
+    FINAL_PATTERN=$(echo "$FINAL_PATTERN" | sed -E 's/<UUID>/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g')
+    # ID (short suffix or identifier)
+    FINAL_PATTERN=$(echo "$FINAL_PATTERN" | sed -E 's/<ID>/[a-z0-9-]+/g')
+
+    MATCHES=$(grep -rEi "$FINAL_PATTERN" "$SEARCH_PATH" 2>/dev/null | head -n 5)
     if [[ -n "$MATCHES" ]]; then
       FOUND_ANY=true
       echo "[!] POTENTIAL MATCH FOUND: $ID - $TITLE" >>"$OUT"
@@ -702,7 +1013,7 @@ if [[ -n "$MOSNAME" ]]; then
       echo "" >>"$OUT"
       echo "Gathering Node Conditions..."
       echo "################# [NODE CONDITIONS] #################" >>"$OUT"
-      for nf in $(grep "/core/nodes" "$LOGPATH/files" | grep "$MOSNAME"); do
+      for nf in $(grep "/core/nodes" "$LOGPATH/files" | grep "$MOS_DIR" | grep "$MOSNAME"); do
         N_NAME=$(basename "$nf" .yaml)
         # Extract conditions using yq
         READY=$(yq eval '.Object.status.conditions[] | select(.type=="Ready") | .status' "$nf" 2>/dev/null)
@@ -1569,15 +1880,15 @@ if [[ -n "$MCCNAME" ]]; then
     # Improved MKE Extraction
     MKE_RAW=$(grep -m1 "release: mke-" "$MCC_YAML" | sed -e 's/.*mke-//' -e 's/[[:space:]]//g' -e 's/-/./g')
     IFS='.' read -r -a E <<<"$MKE_RAW"
-    # E[0].E[1].E[2] = MKEVER4, MKEVER5, MKEVER6
+    MKE_VER_FULL="${E[3]}.${E[4]}.${E[5]}"
     MKE_SHORT="${E[3]}.${E[4]}"
-    MKE_FULL="${E[3]}-${E[4]}-${E[5]}"
-    echo "" >>"$OUT"
-    printf "## MKE Version release details: ${E[3]}.${E[4]}.${E[5]}" >>"$OUT"
-    echo "" >>"$OUT"
-    echo "https://docs.mirantis.com/mke/$MKE_SHORT/release-notes/$MKE_FULL.html" >>"$OUT"
-    echo "https://docs.mirantis.com/mke/$MKE_SHORT/release-notes/$MKE_FULL/known-issues.html" >>"$OUT"
-    echo "" >>"$OUT"
+    MKE_FULL_FILE="${E[3]}-${E[4]}-${E[5]}"
+    
+    MKE_DOC_URL="https://docs.mirantis.com/mke/$MKE_SHORT/release-notes/$MKE_FULL_FILE.html"
+    MKE_KNOWN_URL="https://docs.mirantis.com/mke/$MKE_SHORT/release-notes/$MKE_FULL_FILE/known-issues.html"
+
+    MCC_LINKS_HTML="<div style=\"margin-bottom: 10px;\"><strong>MCC Bugs - $MCC_BUG_VER:</strong><br><a href=\"$MCC_DOC_URL\" target=\"_blank\">Release Notes</a> | <a href=\"$MCC_JIRA_URL\" target=\"_blank\">Jira Bugs</a></div><div><strong>MKE Version: $MKE_VER_FULL</strong><br><a href=\"$MKE_DOC_URL\" target=\"_blank\">Release Notes</a> | <a href=\"$MKE_KNOWN_URL\" target=\"_blank\">Known Issues</a></div>"
+
     echo "## Details and versions:" >>"$OUT"
     printf '# ' >>"$OUT"
     ls $MCC_YAML >>"$OUT"
@@ -1594,7 +1905,7 @@ if [[ -n "$MCCNAME" ]]; then
     echo "Gathering Node Conditions..."
     echo "" >>"$OUT"
     echo "################# [NODE CONDITIONS] #################" >>"$OUT"
-    for nf in $(grep "/core/nodes" "$LOGPATH/files"); do
+    for nf in $(grep "/core/nodes" "$LOGPATH/files" | grep "$MCC_DIR"); do
       N_NAME=$(basename "$nf" .yaml)
       # Extract conditions using yq
       READY=$(yq eval '.Object.status.conditions[] | select(.type=="Ready") | .status' "$nf" 2>/dev/null)
@@ -2409,6 +2720,10 @@ if [[ -n "$MCCNAME" ]] || [[ -n "$MOSNAME" ]]; then
             <br>
             <small>Generated: $DATE</small>
         </p>
+    </div>
+    <div style="text-align: right; font-size: 0.8rem; line-height: 1.4; padding-right: 40px;">
+        ${MCC_LINKS_HTML}
+        ${MOS_LINKS_HTML}
     </div>
 </div>
 <div id="placeholder" class="placeholder-msg">
