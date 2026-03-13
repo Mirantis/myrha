@@ -932,6 +932,12 @@ echo ""
 echo "🚀 Indexing files and starting analysis..."
 find "$BASE_DIR" -not -path "$LOGPATH/*" -type f >"$LOGPATH/files"
 
+# --- GLOBAL COUNTERS ---
+MCC_RUNNING=0; MCC_NON_RUNNING=0; MCC_COMPLETED=0
+MOS_RUNNING=0; MOS_NON_RUNNING=0; MOS_COMPLETED=0
+MCC_NON_RUNNING_LIST=""
+MOS_NON_RUNNING_LIST=""
+
 # Discover MCC and MOS cluster directories
 MCC_DIR=$(find "$BASE_DIR" -type d -name "kaas-mgmt" | head -n 1)
 MOS_DIR=$(find "$BASE_DIR" -type d -name "mos" -not -path "*/objects/*" | head -n 1)
