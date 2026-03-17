@@ -932,6 +932,12 @@ echo ""
 echo "🚀 Indexing files and starting analysis..."
 find "$BASE_DIR" -not -path "$LOGPATH/*" -type f >"$LOGPATH/files"
 
+# --- GLOBAL COUNTERS ---
+MCC_RUNNING=0; MCC_NON_RUNNING=0; MCC_COMPLETED=0
+MOS_RUNNING=0; MOS_NON_RUNNING=0; MOS_COMPLETED=0
+MCC_NON_RUNNING_LIST=""
+MOS_NON_RUNNING_LIST=""
+
 # Discover MCC and MOS cluster directories
 MCC_DIR=$(find "$BASE_DIR" -type d -name "kaas-mgmt" | head -n 1)
 MOS_DIR=$(find "$BASE_DIR" -type d -name "mos" -not -path "*/objects/*" | head -n 1)
@@ -1051,7 +1057,10 @@ if [[ -n "$MOSNAME" ]]; then
     [[ "$MOS_BUG_VER" == "25.2.3" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.3%20%2F%20MOSK%2025.2.3%20(Patch%20release3)%22" >>"$OUT"
     [[ "$MOS_BUG_VER" == "25.2.4" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.4%20%2F%20MOSK%2025.2.4%20(Patch%20release4)%22" >>"$OUT"
     [[ "$MOS_BUG_VER" == "25.2.5" ]] && echo "https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.5%20%2F%20MOSK%2025.2.5%20(Patch%20release5)%22" >>"$OUT"
-    echo "" >>"$OUT"
+    [[ "$MOS_BUG_VER" == "26.1."* ]] && MOS_JIRA_URL="https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31%20%2F%20MOSK%2026.1%22"
+
+    MOS_LINKS_HTML="<div style=\"margin-bottom: 10px;\"><strong>MOS Bugs - $MOS_BUG_VER:</strong><br><a href=\"$MOS_DOC_URL\" target=\"_blank\">Release Notes</a> | <a href=\"$MOS_JIRA_URL\" target=\"_blank\">Jira Bugs</a></div>"
+    
     echo "## Details and versions:" >>"$OUT"
     printf '# ' >>"$OUT"
     ls $MOS_STATUS_FILE >>"$OUT"
@@ -2480,6 +2489,67 @@ if [[ -n "$MCCNAME" ]]; then
 fi
 
 # --- HELPER: FORMAT POD LINE ---
+get_age() {
+  local f="$1"
+  local CREATED=$(yq eval '.Object.metadata.creationTimestamp // .metadata.creationTimestamp' "$f" 2>/dev/null)
+  local AGE="N/A"
+  if [[ -n "$CREATED" && "$CREATED" != "null" ]]; then
+    local NOW_SEC=$(date +%s)
+    # macOS date expects -j -f for parsing
+    local CREATED_SEC=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$CREATED" +%s 2>/dev/null)
+    if [[ -n "$CREATED_SEC" ]]; then
+      local DIFF=$((NOW_SEC - CREATED_SEC))
+      if [ $DIFF -lt 0 ]; then DIFF=0; fi
+      if [ $DIFF -ge 86400 ]; then
+        AGE="$((DIFF / 86400))d"
+      elif [ $DIFF -ge 3600 ]; then
+        AGE="$((DIFF / 3600))h"
+      elif [ $DIFF -ge 60 ]; then
+        AGE="$((DIFF / 60))m"
+      else
+        AGE="${DIFF}s"
+      fi
+    fi
+  fi
+  echo "$AGE"
+}
+
+get_deployment_line() {
+  local f="$1"
+  local NS=$(yq eval '.Object.metadata.namespace // .metadata.namespace' "$f" 2>/dev/null)
+  local NAME=$(yq eval '.Object.metadata.name // .metadata.name' "$f" 2>/dev/null)
+  local READY=$(yq eval '.Object.status.readyReplicas // 0' "$f" 2>/dev/null)
+  local TOTAL=$(yq eval '.Object.spec.replicas // 0' "$f" 2>/dev/null)
+  local UPDATED=$(yq eval '.Object.status.updatedReplicas // 0' "$f" 2>/dev/null)
+  local AVAILABLE=$(yq eval '.Object.status.availableReplicas // 0' "$f" 2>/dev/null)
+  local AGE=$(get_age "$f")
+  printf "%-25s %-50s %-8s %-12s %-12s %-10s\n" "$NS" "$NAME" "$READY/$TOTAL" "$UPDATED" "$AVAILABLE" "$AGE"
+}
+
+get_statefulset_line() {
+  local f="$1"
+  local NS=$(yq eval '.Object.metadata.namespace // .metadata.namespace' "$f" 2>/dev/null)
+  local NAME=$(yq eval '.Object.metadata.name // .metadata.name' "$f" 2>/dev/null)
+  local READY=$(yq eval '.Object.status.readyReplicas // 0' "$f" 2>/dev/null)
+  local TOTAL=$(yq eval '.Object.spec.replicas // 0' "$f" 2>/dev/null)
+  local AGE=$(get_age "$f")
+  printf "%-25s %-50s %-8s %-10s\n" "$NS" "$NAME" "$READY/$TOTAL" "$AGE"
+}
+
+get_daemonset_line() {
+  local f="$1"
+  local NS=$(yq eval '.Object.metadata.namespace // .metadata.namespace' "$f" 2>/dev/null)
+  local NAME=$(yq eval '.Object.metadata.name // .metadata.name' "$f" 2>/dev/null)
+  local DESIRED=$(yq eval '.Object.status.desiredNumberScheduled // 0' "$f" 2>/dev/null)
+  local CURRENT=$(yq eval '.Object.status.currentNumberScheduled // 0' "$f" 2>/dev/null)
+  local READY=$(yq eval '.Object.status.numberReady // 0' "$f" 2>/dev/null)
+  local UPDATED=$(yq eval '.Object.status.updatedNumberScheduled // 0' "$f" 2>/dev/null)
+  local AVAILABLE=$(yq eval '.Object.status.numberAvailable // 0' "$f" 2>/dev/null)
+  local NODE_SEL=$(yq eval '.Object.spec.template.spec.nodeSelector // {} | to_entries | map(.key + "=" + .value) | join(",")' "$f" 2>/dev/null | cut -c1-20)
+  local AGE=$(get_age "$f")
+  printf "%-25s %-50s %-8s %-8s %-8s %-10s %-10s %-22s %-10s\n" "$NS" "$NAME" "$DESIRED" "$CURRENT" "$READY" "$UPDATED" "$AVAILABLE" "${NODE_SEL:-<none>}" "$AGE"
+}
+
 get_pod_line() {
   local f="$1"
   local NS=$(yq eval '.Object.metadata.namespace // .metadata.namespace' "$f" 2>/dev/null)
@@ -2556,6 +2626,7 @@ if [[ -n "$MCC_DIR" ]]; then
 
     if [[ "$PHASE" == "Running" ]]; then
       ((MCC_RUNNING++))
+      echo "# $f" >>"$BUF_RUNNING"
       echo "$LINE" >>"$BUF_RUNNING"
     else
       if [[ "$PHASE" == "Succeeded" ]] || [[ "$PHASE" == "Completed" ]]; then
@@ -2566,6 +2637,7 @@ if [[ -n "$MCC_DIR" ]]; then
       fi
 
       ((COUNT_FAILED++))
+      echo "# $f" >>"$BUF_FAILED"
       echo "$LINE" >>"$BUF_FAILED"
 
       # Only gather logs for FAILED pods (not Succeeded/Completed)
@@ -2623,6 +2695,7 @@ if [[ -n "$MOS_DIR" ]]; then
 
     if [[ "$PHASE" == "Running" ]]; then
       ((MOS_RUNNING++))
+      echo "# $f" >>"$BUF_RUNNING"
       echo "$LINE" >>"$BUF_RUNNING"
     else
       if [[ "$PHASE" == "Succeeded" ]] || [[ "$PHASE" == "Completed" ]]; then
@@ -2633,6 +2706,7 @@ if [[ -n "$MOS_DIR" ]]; then
       fi
 
       ((COUNT_FAILED++))
+      echo "# $f" >>"$BUF_FAILED"
       echo "$LINE" >>"$BUF_FAILED"
 
       # Only gather logs for FAILED pods (not Succeeded/Completed)
@@ -2661,7 +2735,72 @@ if [[ -n "$MOS_DIR" ]]; then
   cat "$BUF_FAILED" >>"$OUT_FAILED"
 
   rm "$BUF_RUNNING" "$BUF_FAILED"
-fi
+  fi
+
+  # --- MCC DEPLOYMENT, STATEFULSET, DAEMONSET AUDIT ---
+  if [[ -n "$MCC_DIR" ]]; then
+  echo "Auditing MCC Deployments, StatefulSets, and DaemonSets..."
+
+  # Deployments
+  OUT_DEP="$LOGPATH/mcc_deployments"
+  echo "################# [MCC DEPLOYMENTS] #################" >"$OUT_DEP"
+  printf "%-25s %-50s %-8s %-12s %-12s %-10s\n" "NAMESPACE" "NAME" "READY" "UP-TO-DATE" "AVAILABLE" "AGE" >>"$OUT_DEP"
+  while read -r f; do
+    echo "# $f" >>"$OUT_DEP"
+    get_deployment_line "$f" >>"$OUT_DEP"
+  done < <(find "$MCC_DIR" -path "*/apps/deployments/*.yaml" -type f)
+
+  # StatefulSets
+  OUT_STS="$LOGPATH/mcc_statefulsets"
+  echo "################# [MCC STATEFULSETS] #################" >"$OUT_STS"
+  printf "%-25s %-50s %-8s %-10s\n" "NAMESPACE" "NAME" "READY" "AGE" >>"$OUT_STS"
+  while read -r f; do
+    echo "# $f" >>"$OUT_STS"
+    get_statefulset_line "$f" >>"$OUT_STS"
+  done < <(find "$MCC_DIR" -path "*/apps/statefulsets/*.yaml" -type f)
+
+  # DaemonSets
+  OUT_DS="$LOGPATH/mcc_daemonsets"
+  echo "################# [MCC DAEMONSETS] #################" >"$OUT_DS"
+  printf "%-25s %-50s %-8s %-8s %-8s %-10s %-10s %-22s %-10s\n" "NAMESPACE" "NAME" "DESIRED" "CURRENT" "READY" "UP-TO-DATE" "AVAILABLE" "NODE-SELECTOR" "AGE" >>"$OUT_DS"
+  while read -r f; do
+    echo "# $f" >>"$OUT_DS"
+    get_daemonset_line "$f" >>"$OUT_DS"
+  done < <(find "$MCC_DIR" -path "*/apps/daemonsets/*.yaml" -type f)
+  fi
+
+  # --- MOS DEPLOYMENT, STATEFULSET, DAEMONSET AUDIT ---
+  if [[ -n "$MOS_DIR" ]]; then
+  echo "Auditing MOS Deployments, StatefulSets, and DaemonSets..."
+
+  # Deployments
+  OUT_DEP="$LOGPATH/mos_deployments"
+  echo "################# [MOS DEPLOYMENTS] #################" >"$OUT_DEP"
+  printf "%-25s %-50s %-8s %-12s %-12s %-10s\n" "NAMESPACE" "NAME" "READY" "UP-TO-DATE" "AVAILABLE" "AGE" >>"$OUT_DEP"
+  while read -r f; do
+    echo "# $f" >>"$OUT_DEP"
+    get_deployment_line "$f" >>"$OUT_DEP"
+  done < <(find "$MOS_DIR" -path "*/apps/deployments/*.yaml" -type f)
+
+  # StatefulSets
+  OUT_STS="$LOGPATH/mos_statefulsets"
+  echo "################# [MOS STATEFULSETS] #################" >"$OUT_STS"
+  printf "%-25s %-50s %-8s %-10s\n" "NAMESPACE" "NAME" "READY" "AGE" >>"$OUT_STS"
+  while read -r f; do
+    echo "# $f" >>"$OUT_STS"
+    get_statefulset_line "$f" >>"$OUT_STS"
+  done < <(find "$MOS_DIR" -path "*/apps/statefulsets/*.yaml" -type f)
+
+  # DaemonSets
+  OUT_DS="$LOGPATH/mos_daemonsets"
+  echo "################# [MOS DAEMONSETS] #################" >"$OUT_DS"
+  printf "%-25s %-50s %-8s %-8s %-8s %-10s %-10s %-22s %-10s\n" "NAMESPACE" "NAME" "DESIRED" "CURRENT" "READY" "UP-TO-DATE" "AVAILABLE" "NODE-SELECTOR" "AGE" >>"$OUT_DS"
+  while read -r f; do
+    echo "# $f" >>"$OUT_DS"
+    get_daemonset_line "$f" >>"$OUT_DS"
+  done < <(find "$MOS_DIR" -path "*/apps/daemonsets/*.yaml" -type f)
+  fi
+
 # --- MCC LICENSE & RELEASES ---
 OUT="$LOGPATH/mcc_license_releases"
 echo "Gathering License and Releases..."
