@@ -185,8 +185,10 @@ cat <<'EOF' >"$HTML_REPORT"
     function filterType(type) {
         currentFilter = type;
         document.querySelectorAll('.filter-btn').forEach(btn => {
-            const btnType = btn.getAttribute('onclick').match(/'([^']+)'/)[1];
-            btn.classList.toggle('active', btnType === type);
+            const match = btn.getAttribute('onclick').match(/'([^']+)'/);
+            if (match) {
+                btn.classList.toggle('active', match[1] === type);
+            }
         });
         applyFilters();
     }
@@ -200,7 +202,7 @@ cat <<'EOF' >"$HTML_REPORT"
             const text = item.innerText.toLowerCase();
             const category = item.dataset.category;
             const matchesSearch = text.includes(query);
-            const matchesFilter = currentFilter === 'all' || category === currentFilter || category === 'cluster';
+            const matchesFilter = currentFilter === 'all' || category === currentFilter || category === 'cluster' || category === 'all';
             item.classList.toggle('hidden', !matchesSearch || !matchesFilter);
         });
     }
@@ -1707,6 +1709,7 @@ if [[ -n "$MOSNAME" ]] && [[ -d "$MOS_DIR/objects/namespaced/tf" ]]; then
     KIND=$(yq eval '.Object.kind // .kind' "$f" 2>/dev/null)
     [[ "$KIND" == "Pod" || "$KIND" == "Endpoints" || "$KIND" == "Service" ]] && continue
     echo "----------------------------------------------------" >>"$OUT"
+    echo "# [FILE]: $f" >>"$OUT"
     echo "### Component: $(basename "$f" .yaml) ($KIND)" >>"$OUT"
     yq eval '.Object.status // .status' "$f" 2>/dev/null >>"$OUT"
   done
@@ -2488,6 +2491,49 @@ if [[ -n "$MCCNAME" ]]; then
   done
 fi
 
+# --- BAREMETAL PROVIDER AUDIT ---
+if [[ -n "$MCC_DIR" ]]; then
+  OUT="$LOGPATH/mcc_baremetal_provider.yaml"
+  echo "Gathering Baremetal Provider details..."
+  echo "################# [BAREMETAL PROVIDER AUDIT] #################" >"$OUT"
+
+  # 1. Deployment and Status
+  BM_DEPLOY=$(find "$MCC_DIR" -path "*/kaas/apps/deployments/baremetal-provider.yaml" | head -n 1)
+  if [[ -f "$BM_DEPLOY" ]]; then
+    echo "# [FILE]: $BM_DEPLOY" >>"$OUT"
+    echo "## Deployment Status:" >>"$OUT"
+    yq eval '.Object.status // .status' "$BM_DEPLOY" 2>/dev/null | sed 's/^/  /' >>"$OUT"
+    IMAGE=$(yq eval '.Object.spec.template.spec.containers[0].image // .spec.template.spec.containers[0].image' "$BM_DEPLOY" 2>/dev/null)
+    echo "  Image: $IMAGE" >>"$OUT"
+  fi
+
+  # 2. Leader Election
+  BM_LEASE=$(find "$MCC_DIR" -path "*/kaas/coordination.k8s.io/leases/baremetal-provider-leader-election.yaml" | head -n 1)
+  if [[ -f "$BM_LEASE" ]]; then
+    echo -e "\n## Leader Election:" >>"$OUT"
+    HOLDER=$(yq eval '.Object.spec.holderIdentity // .spec.holderIdentity' "$BM_LEASE" 2>/dev/null)
+    RENEW=$(yq eval '.Object.spec.renewTime // .spec.renewTime' "$BM_LEASE" 2>/dev/null)
+    echo "  Current Leader: $HOLDER" >>"$OUT"
+    echo "  Renew Time:     $RENEW" >>"$OUT"
+  fi
+
+  # 3. Config Details
+  BM_CONFIG=$(find "$MCC_DIR" -path "*/kaas/core/configmaps/baremetal-provider-config.yaml" | head -n 1)
+  if [[ -f "$BM_CONFIG" ]]; then
+    echo -e "\n## Configuration (baremetal-provider-config):" >>"$OUT"
+    yq eval '.Object.data // .data' "$BM_CONFIG" 2>/dev/null | sed 's/^/  /' >>"$OUT"
+  fi
+
+  # 4. Logs Audit (Errors/Warnings)
+  echo -e "\n## Recent Log Errors/Warnings:" >>"$OUT"
+  find "$MCC_DIR" -path "*/kaas/core/pods/baremetal-provider-*/manager.log" | sort | while read -r log; do
+    POD_NAME=$(basename $(dirname "$log"))
+    echo "----------------------------------------------------" >>"$OUT"
+    echo "### Pod: $POD_NAME" >>"$OUT"
+    grep -Ei "error|warning|warn|fail" "$log" | tail -n 20 >>"$OUT"
+  done
+fi
+
 # --- HELPER: FORMAT POD LINE ---
 get_age() {
   local f="$1"
@@ -2573,7 +2619,10 @@ get_pod_line() {
   
   # Calculate restarts
   local RESTARTS=$(yq eval '.Object.status.containerStatuses[].restartCount' "$f" 2>/dev/null | awk '{sum+=$1} END {print sum+0}')
-  
+
+  local NODE=$(yq eval '.Object.spec.nodeName // .spec.nodeName' "$f" 2>/dev/null)
+  [[ "$NODE" == "null" ]] && NODE="N/A"
+
   # Calculate AGE (macOS version)
   local CREATED=$(yq eval '.Object.metadata.creationTimestamp // .metadata.creationTimestamp' "$f" 2>/dev/null)
   local AGE="N/A"
@@ -2596,13 +2645,13 @@ get_pod_line() {
     fi
   fi
 
-  printf "%-25s %-50s %-8s %-20s %-10s %-5s\n" "$NS" "$NAME" "${READY_COUNT}/${TOTAL_COUNT}" "$STATUS" "$RESTARTS" "$AGE"
-}
+  printf "%-25s %-50s %-8s %-20s %-10s %-10s %-25s\n" "$NS" "$NAME" "${READY_COUNT}/${TOTAL_COUNT}" "$STATUS" "$RESTARTS" "$AGE" "$NODE"
+  }
 
 # --- MCC POD AUDIT ---
 if [[ -n "$MCC_DIR" ]]; then
-  OUT_RUNNING="$LOGPATH/mcc_running_pods"
-  OUT_FAILED="$LOGPATH/mcc_failed_completed_pods"
+  OUT_RUNNING="$LOGPATH/mcc_running_pods.yaml"
+  OUT_FAILED="$LOGPATH/mcc_failed_completed_pods.yaml"
 
   echo "Auditing MCC Pods..."
 
@@ -2613,10 +2662,16 @@ if [[ -n "$MCC_DIR" ]]; then
   COUNT_RUNNING=0
   COUNT_FAILED=0
 
-  HEADER=$(printf "%-25s %-50s %-8s %-20s %-10s %-5s\n" "NAMESPACE" "NAME" "READY" "STATUS" "RESTARTS" "AGE")
+  HEADER=$(printf "%-25s %-50s %-8s %-20s %-10s %-10s %-25s\n" "NAMESPACE" "NAME" "READY" "STATUS" "RESTARTS" "AGE" "NODE")
   echo "$HEADER" >>"$BUF_RUNNING"
   echo "$HEADER" >>"$BUF_FAILED"
   echo "----------------------------------------------------" >>"$BUF_FAILED"
+
+  # 1. Collect all files for the links at the top
+  find "$MCC_DIR" -path "*/core/pods/*.yaml" -type f | while read -r f; do
+    echo "# [FILE]: $f" >>"$OUT_RUNNING"
+    echo "# [FILE]: $f" >>"$OUT_FAILED"
+  done
 
   while read -r f; do
     PHASE=$(yq eval '.Object.status.phase // .status.phase' "$f" 2>/dev/null)
@@ -2626,7 +2681,6 @@ if [[ -n "$MCC_DIR" ]]; then
 
     if [[ "$PHASE" == "Running" ]]; then
       ((MCC_RUNNING++))
-      echo "# $f" >>"$BUF_RUNNING"
       echo "$LINE" >>"$BUF_RUNNING"
     else
       if [[ "$PHASE" == "Succeeded" ]] || [[ "$PHASE" == "Completed" ]]; then
@@ -2637,7 +2691,6 @@ if [[ -n "$MCC_DIR" ]]; then
       fi
 
       ((COUNT_FAILED++))
-      echo "# $f" >>"$BUF_FAILED"
       echo "$LINE" >>"$BUF_FAILED"
 
       # Only gather logs for FAILED pods (not Succeeded/Completed)
@@ -2670,8 +2723,8 @@ fi
 
 # --- MOS POD AUDIT ---
 if [[ -n "$MOS_DIR" ]]; then
-  OUT_RUNNING="$LOGPATH/mos_running_pods"
-  OUT_FAILED="$LOGPATH/mos_failed_completed_pods"
+  OUT_RUNNING="$LOGPATH/mos_running_pods.yaml"
+  OUT_FAILED="$LOGPATH/mos_failed_completed_pods.yaml"
 
   echo "Auditing MOS Pods..."
 
@@ -2682,10 +2735,16 @@ if [[ -n "$MOS_DIR" ]]; then
   COUNT_RUNNING=0
   COUNT_FAILED=0
 
-  HEADER=$(printf "%-25s %-50s %-8s %-20s %-10s %-5s\n" "NAMESPACE" "NAME" "READY" "STATUS" "RESTARTS" "AGE")
+  HEADER=$(printf "%-25s %-50s %-8s %-20s %-10s %-10s %-25s\n" "NAMESPACE" "NAME" "READY" "STATUS" "RESTARTS" "AGE" "NODE")
   echo "$HEADER" >>"$BUF_RUNNING"
   echo "$HEADER" >>"$BUF_FAILED"
   echo "----------------------------------------------------" >>"$BUF_FAILED"
+
+  # 1. Collect all files for the links at the top
+  find "$MOS_DIR" -path "*/core/pods/*.yaml" -type f | while read -r f; do
+    echo "# [FILE]: $f" >>"$OUT_RUNNING"
+    echo "# [FILE]: $f" >>"$OUT_FAILED"
+  done
 
   while read -r f; do
     PHASE=$(yq eval '.Object.status.phase // .status.phase' "$f" 2>/dev/null)
@@ -2695,7 +2754,6 @@ if [[ -n "$MOS_DIR" ]]; then
 
     if [[ "$PHASE" == "Running" ]]; then
       ((MOS_RUNNING++))
-      echo "# $f" >>"$BUF_RUNNING"
       echo "$LINE" >>"$BUF_RUNNING"
     else
       if [[ "$PHASE" == "Succeeded" ]] || [[ "$PHASE" == "Completed" ]]; then
@@ -2706,7 +2764,6 @@ if [[ -n "$MOS_DIR" ]]; then
       fi
 
       ((COUNT_FAILED++))
-      echo "# $f" >>"$BUF_FAILED"
       echo "$LINE" >>"$BUF_FAILED"
 
       # Only gather logs for FAILED pods (not Succeeded/Completed)
@@ -2735,36 +2792,44 @@ if [[ -n "$MOS_DIR" ]]; then
   cat "$BUF_FAILED" >>"$OUT_FAILED"
 
   rm "$BUF_RUNNING" "$BUF_FAILED"
-  fi
-
+fi
   # --- MCC DEPLOYMENT, STATEFULSET, DAEMONSET AUDIT ---
   if [[ -n "$MCC_DIR" ]]; then
   echo "Auditing MCC Deployments, StatefulSets, and DaemonSets..."
 
   # Deployments
-  OUT_DEP="$LOGPATH/mcc_deployments"
+  OUT_DEP="$LOGPATH/mcc_deployments.yaml"
   echo "################# [MCC DEPLOYMENTS] #################" >"$OUT_DEP"
+  # List files at the top
+  find "$MCC_DIR" -path "*/apps/deployments/*.yaml" -type f | while read -r f; do
+    echo "# [FILE]: $f" >>"$OUT_DEP"
+  done
   printf "%-25s %-50s %-8s %-12s %-12s %-10s\n" "NAMESPACE" "NAME" "READY" "UP-TO-DATE" "AVAILABLE" "AGE" >>"$OUT_DEP"
   while read -r f; do
-    echo "# $f" >>"$OUT_DEP"
     get_deployment_line "$f" >>"$OUT_DEP"
   done < <(find "$MCC_DIR" -path "*/apps/deployments/*.yaml" -type f)
 
   # StatefulSets
-  OUT_STS="$LOGPATH/mcc_statefulsets"
+  OUT_STS="$LOGPATH/mcc_statefulsets.yaml"
   echo "################# [MCC STATEFULSETS] #################" >"$OUT_STS"
+  # List files at the top
+  find "$MCC_DIR" -path "*/apps/statefulsets/*.yaml" -type f | while read -r f; do
+    echo "# [FILE]: $f" >>"$OUT_STS"
+  done
   printf "%-25s %-50s %-8s %-10s\n" "NAMESPACE" "NAME" "READY" "AGE" >>"$OUT_STS"
   while read -r f; do
-    echo "# $f" >>"$OUT_STS"
     get_statefulset_line "$f" >>"$OUT_STS"
   done < <(find "$MCC_DIR" -path "*/apps/statefulsets/*.yaml" -type f)
 
   # DaemonSets
-  OUT_DS="$LOGPATH/mcc_daemonsets"
+  OUT_DS="$LOGPATH/mcc_daemonsets.yaml"
   echo "################# [MCC DAEMONSETS] #################" >"$OUT_DS"
+  # List files at the top
+  find "$MCC_DIR" -path "*/apps/daemonsets/*.yaml" -type f | while read -r f; do
+    echo "# [FILE]: $f" >>"$OUT_DS"
+  done
   printf "%-25s %-50s %-8s %-8s %-8s %-10s %-10s %-22s %-10s\n" "NAMESPACE" "NAME" "DESIRED" "CURRENT" "READY" "UP-TO-DATE" "AVAILABLE" "NODE-SELECTOR" "AGE" >>"$OUT_DS"
   while read -r f; do
-    echo "# $f" >>"$OUT_DS"
     get_daemonset_line "$f" >>"$OUT_DS"
   done < <(find "$MCC_DIR" -path "*/apps/daemonsets/*.yaml" -type f)
   fi
@@ -2774,29 +2839,38 @@ if [[ -n "$MOS_DIR" ]]; then
   echo "Auditing MOS Deployments, StatefulSets, and DaemonSets..."
 
   # Deployments
-  OUT_DEP="$LOGPATH/mos_deployments"
+  OUT_DEP="$LOGPATH/mos_deployments.yaml"
   echo "################# [MOS DEPLOYMENTS] #################" >"$OUT_DEP"
+  # List files at the top
+  find "$MOS_DIR" -path "*/apps/deployments/*.yaml" -type f | while read -r f; do
+    echo "# [FILE]: $f" >>"$OUT_DEP"
+  done
   printf "%-25s %-50s %-8s %-12s %-12s %-10s\n" "NAMESPACE" "NAME" "READY" "UP-TO-DATE" "AVAILABLE" "AGE" >>"$OUT_DEP"
   while read -r f; do
-    echo "# $f" >>"$OUT_DEP"
     get_deployment_line "$f" >>"$OUT_DEP"
   done < <(find "$MOS_DIR" -path "*/apps/deployments/*.yaml" -type f)
 
   # StatefulSets
-  OUT_STS="$LOGPATH/mos_statefulsets"
+  OUT_STS="$LOGPATH/mos_statefulsets.yaml"
   echo "################# [MOS STATEFULSETS] #################" >"$OUT_STS"
+  # List files at the top
+  find "$MOS_DIR" -path "*/apps/statefulsets/*.yaml" -type f | while read -r f; do
+    echo "# [FILE]: $f" >>"$OUT_STS"
+  done
   printf "%-25s %-50s %-8s %-10s\n" "NAMESPACE" "NAME" "READY" "AGE" >>"$OUT_STS"
   while read -r f; do
-    echo "# $f" >>"$OUT_STS"
     get_statefulset_line "$f" >>"$OUT_STS"
   done < <(find "$MOS_DIR" -path "*/apps/statefulsets/*.yaml" -type f)
 
   # DaemonSets
-  OUT_DS="$LOGPATH/mos_daemonsets"
+  OUT_DS="$LOGPATH/mos_daemonsets.yaml"
   echo "################# [MOS DAEMONSETS] #################" >"$OUT_DS"
+  # List files at the top
+  find "$MOS_DIR" -path "*/apps/daemonsets/*.yaml" -type f | while read -r f; do
+    echo "# [FILE]: $f" >>"$OUT_DS"
+  done
   printf "%-25s %-50s %-8s %-8s %-8s %-10s %-10s %-22s %-10s\n" "NAMESPACE" "NAME" "DESIRED" "CURRENT" "READY" "UP-TO-DATE" "AVAILABLE" "NODE-SELECTOR" "AGE" >>"$OUT_DS"
   while read -r f; do
-    echo "# $f" >>"$OUT_DS"
     get_daemonset_line "$f" >>"$OUT_DS"
   done < <(find "$MOS_DIR" -path "*/apps/daemonsets/*.yaml" -type f)
   fi
@@ -3179,7 +3253,12 @@ EOF
     TITLE=$(basename "$yaml_file" .yaml | tr '_' ' ' | tr '[:lower:]' '[:upper:]')
     ANCHOR=$(echo "$TITLE" | tr ' ' '-')
 
-    FILES=$(grep -oE '(\.?/[-a-zA-Z0-9._/]+\.(log|yaml|json|txt|conf))' "$yaml_file" | sort -u)
+    # Extract files: check for '# [FILE]:' prefix first, fallback to general grep
+    FILES=$(grep "^# \[FILE\]: " "$yaml_file" | cut -d' ' -f3- | sort -u)
+    if [[ -z "$FILES" ]]; then
+       FILES=$(grep -oE '(\.?/[-a-zA-Z0-9._/]+\.(log|yaml|json|txt|conf))' "$yaml_file" | sort -u)
+    fi
+
     LINKS_HTML=""
     if [[ -n "$FILES" ]]; then
       FILE_COUNT=$(echo "$FILES" | wc -l)
@@ -3231,7 +3310,7 @@ EOF
       echo "  </h2>"
       echo "$LINKS_HTML"
       echo "  <pre class='language-yaml raw-code'><code>"
-      sed 's/\xc2\xa0/ /g; s/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' "$yaml_file"
+      sed '/^# \[FILE\]: /d; s/\xc2\xa0/ /g; s/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' "$yaml_file"
       echo "  </code></pre>"
       echo "</div>"
     } >>"$HTML_REPORT"
