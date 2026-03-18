@@ -182,8 +182,10 @@ cat <<'EOF' >"$HTML_REPORT"
     function filterType(type) {
         currentFilter = type;
         document.querySelectorAll('.filter-btn').forEach(btn => {
-            const btnType = btn.getAttribute('onclick').match(/'([^']+)'/)[1];
-            btn.classList.toggle('active', btnType === type);
+            const match = btn.getAttribute('onclick').match(/'([^']+)'/);
+            if (match) {
+                btn.classList.toggle('active', match[1] === type);
+            }
         });
         applyFilters();
     }
@@ -197,7 +199,7 @@ cat <<'EOF' >"$HTML_REPORT"
             const text = item.innerText.toLowerCase();
             const category = item.dataset.category;
             const matchesSearch = text.includes(query);
-            const matchesFilter = currentFilter === 'all' || category === currentFilter || category === 'cluster';
+            const matchesFilter = currentFilter === 'all' || category === currentFilter || category === 'cluster' || category === 'all';
             item.classList.toggle('hidden', !matchesSearch || !matchesFilter);
         });
     }
@@ -354,7 +356,7 @@ EOF
 check_known_issues() {
   local MOS_VER_RAW="$1"
   local MCC_VER_RAW="$2"
-  local OUT="$LOGPATH/cluster_known_issues"
+  local OUT="$LOGPATH/cluster_known_issues.yaml"
   
   # Extract versions
   local MOS_VER="0.0.0"
@@ -986,7 +988,7 @@ if [[ -n "$MCCNAME" && -n "$MOS_DIR" ]]; then
   fi
 fi
 if [[ -n "$MOSNAME" ]]; then
-  OUT="$LOGPATH/mos_cluster"
+  OUT="$LOGPATH/mos_cluster.yaml"
   echo "Gathering MOS cluster details..."
   echo "################# [MOS CLUSTER DETAILS] #################" >"$OUT"
   MOS_STATUS_FILE=$(ls $MOS_DIR/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml 2>/dev/null | head -n 1)
@@ -1089,7 +1091,7 @@ if [[ -n "$MOSNAME" ]]; then
   fi
 fi
 if [[ -n "$MOSNAME" ]]; then
-  OUT="$LOGPATH/mos_events"
+  OUT="$LOGPATH/mos_events.yaml"
   echo "Gathering MOS cluster events..."
   echo "################# [MOS EVENTS (WARNING+ERRORS)] #################" >"$OUT"
   echo "" >>"$OUT"
@@ -1101,7 +1103,7 @@ fi
 
 # 5. Stacklight & Patroni Details Card
 if [[ -d "$MOS_DIR/objects/namespaced/stacklight" ]]; then
-  OUT="$LOGPATH/mos_stacklight"
+  OUT="$LOGPATH/mos_stacklight.yaml"
   echo "Gathering MOS Stacklight details..."
   echo "################# [MOS STACKLIGHT & PATRONI DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
@@ -1133,7 +1135,7 @@ fi
 
 # 6. MOS Credentials Card
 if [[ -n "$MOSNAME" ]]; then
-  OUT="$LOGPATH/mos_credentials"
+  OUT="$LOGPATH/mos_credentials.yaml"
   echo "Scanning MOS Secrets for Credentials..."
   TMP_CREDS="$LOGPATH/mos_creds_other"
   TMP_TOKENS="$LOGPATH/mos_creds_tokens"
@@ -1219,7 +1221,7 @@ if [[ -n "$MOSNAME" ]]; then
   rm "$TMP_CREDS" "$TMP_TOKENS"
 fi
 if [[ -n "$MOSNAME" ]]; then
-  OUT="$LOGPATH/mos_nodes"
+  OUT="$LOGPATH/mos_nodes.yaml"
   echo "Gathering MOS node details..."
   echo "################# [MOS NODE DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
@@ -1241,7 +1243,7 @@ if [[ -n "$MOSNAME" ]]; then
   done <$LOGPATH/mos-nodes
 fi
 if [[ -n "$MCCNAME" ]]; then
-  OUT="$LOGPATH/mos_lcmmachine"
+  OUT="$LOGPATH/mos_lcmmachine.yaml"
   echo "Gathering MOS LCM machine details..."
   echo "################# [MOS LCM MACHINE DETAILS] #################" >"$OUT"
   grep $MCC_DIR/objects/namespaced/$MOSNAMESPACE/lcm.mirantis.com/lcmmachines $LOGPATH/files >$LOGPATH/mos-lcmmachine
@@ -1263,7 +1265,7 @@ if [[ -n "$MCCNAME" ]]; then
   echo "" >>"$OUT"
 fi
 if [[ -n "$MCCNAME" ]]; then
-  OUT="$LOGPATH/mos_machine"
+  OUT="$LOGPATH/mos_machine.yaml"
   echo "Gathering MOS machine details..."
   echo "################# [MOS MACHINE DETAILS] #################" >"$OUT"
   grep $MCC_DIR/objects/namespaced/$MOSNAMESPACE/cluster.k8s.io/machines $LOGPATH/files >$LOGPATH/mos-machine
@@ -1285,7 +1287,7 @@ if [[ -n "$MCCNAME" ]]; then
   echo "" >>"$OUT"
 fi
 if [[ -n "$MOSNAME" ]]; then
-  OUT="$LOGPATH/mos_ceph_control"
+  OUT="$LOGPATH/mos_ceph_control.yaml"
   echo "Gathering MOS Ceph Control Plane details..."
   echo "################# [MOS CEPH CONTROL DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
@@ -1313,7 +1315,7 @@ if [[ -n "$MOSNAME" ]]; then
 fi
 
 if [[ -n "$MOSNAME" ]]; then
-  OUT="$LOGPATH/mos_ceph_osd"
+  OUT="$LOGPATH/mos_ceph_osd.yaml"
   echo "Gathering MOS Ceph OSD details..."
   echo "################# [MOS CEPH OSD DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
@@ -1327,7 +1329,7 @@ if [[ -n "$MOSNAME" ]]; then
   done <$LOGPATH/ceph-osd
 fi
 if [[ -n "$MOSNAME" ]]; then
-  OUT="$LOGPATH/mos_openstack"
+  OUT="$LOGPATH/mos_openstack.yaml"
   echo "Gathering MOS Openstack OSDPL details..."
   echo "################# [MOS OPENSTACK OSDPL DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
@@ -1344,7 +1346,7 @@ if [[ -n "$MOSNAME" ]]; then
 fi
 
 if [[ -n "$MOSNAME" ]]; then
-  OUT="$LOGPATH/mos_openstack_neutron"
+  OUT="$LOGPATH/mos_openstack_neutron.yaml"
   echo "Gathering MOS Openstack Neutron logs..."
   echo "################# [MOS OPENSTACK NEUTRON DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
@@ -1359,7 +1361,7 @@ if [[ -n "$MOSNAME" ]]; then
 fi
 
 if [[ -n "$MOSNAME" ]]; then
-  OUT="$LOGPATH/mos_openstack_nova"
+  OUT="$LOGPATH/mos_openstack_nova.yaml"
   echo "Gathering MOS Openstack Nova logs..."
   echo "################# [MOS OPENSTACK NOVA DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
@@ -1383,7 +1385,7 @@ if [[ -n "$MOSNAME" ]]; then
 fi
 
 if [[ -n "$MOSNAME" ]]; then
-  OUT="$LOGPATH/mos_openstack_etcd"
+  OUT="$LOGPATH/mos_openstack_etcd.yaml"
   echo "Gathering MOS Openstack ETCD details..."
   echo "################# [MOS OPENSTACK ETCD DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
@@ -1406,7 +1408,7 @@ if [[ -n "$MOSNAME" ]]; then
 fi
 
 if [[ -n "$MOSNAME" ]]; then
-  OUT="$LOGPATH/mos_openstack_libvirt"
+  OUT="$LOGPATH/mos_openstack_libvirt.yaml"
   echo "Gathering MOS Openstack Libvirt logs..."
   echo "################# [MOS OPENSTACK LIBVIRT DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
@@ -1421,7 +1423,7 @@ if [[ -n "$MOSNAME" ]]; then
 fi
 
 if [[ -n "$MOSNAME" ]]; then
-  OUT="$LOGPATH/mos_openstack_keystone"
+  OUT="$LOGPATH/mos_openstack_keystone.yaml"
   echo "Gathering MOS Openstack Keystone logs..."
   echo "################# [MOS OPENSTACK KEYSTONE DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
@@ -1436,7 +1438,7 @@ if [[ -n "$MOSNAME" ]]; then
 fi
 
 if [[ -n "$MOSNAME" ]]; then
-  OUT="$LOGPATH/mos_openstack_cinder"
+  OUT="$LOGPATH/mos_openstack_cinder.yaml"
   echo "Gathering MOS Openstack Cinder logs..."
   echo "################# [MOS OPENSTACK CINDER DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
@@ -1460,7 +1462,7 @@ if [[ -n "$MOSNAME" ]]; then
 fi
 
 if [[ -n "$MOSNAME" ]]; then
-  OUT="$LOGPATH/mos_openstack_glance"
+  OUT="$LOGPATH/mos_openstack_glance.yaml"
   echo "Gathering MOS Openstack Glance logs..."
   echo "################# [MOS OPENSTACK GLANCE DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
@@ -1475,7 +1477,7 @@ if [[ -n "$MOSNAME" ]]; then
 fi
 
 if [[ -n "$MOSNAME" ]]; then
-  OUT="$LOGPATH/mos_openstack_horizon"
+  OUT="$LOGPATH/mos_openstack_horizon.yaml"
   echo "Gathering MOS Openstack Horizon logs..."
   echo "################# [MOS OPENSTACK HORIZON DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
@@ -1490,7 +1492,7 @@ if [[ -n "$MOSNAME" ]]; then
 fi
 
 if [[ -n "$MOSNAME" ]]; then
-  OUT="$LOGPATH/mos_openstack_rabbitmq"
+  OUT="$LOGPATH/mos_openstack_rabbitmq.yaml"
   echo "Gathering MOS Openstack RabbitMQ logs..."
   echo "################# [MOS OPENSTACK RABBITMQ DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
@@ -1504,7 +1506,7 @@ if [[ -n "$MOSNAME" ]]; then
   done <$LOGPATH/mos-openstack-rabbitmq
 fi
 if [[ -n "$MOSNAME" ]]; then
-  OUT="$LOGPATH/mos_mariadb"
+  OUT="$LOGPATH/mos_mariadb.yaml"
   echo "Gathering MOS Mariadb details and logs..."
   echo "################# [MOS MARIADB DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
@@ -1534,7 +1536,7 @@ if [[ -n "$MOSNAME" ]]; then
   awk '/ERR|WARN/ && !/WARNING - Collision writing configmap/ && NF' "$MOS_DIR/objects/namespaced/openstack/core/pods/mariadb-server-2/mariadb.log" >>"$OUT"
 fi
 if [[ -n "$MCCNAME" ]]; then
-  OUT="$LOGPATH/mos_ipamhost"
+  OUT="$LOGPATH/mos_ipamhost.yaml"
   echo "Gathering MOS Ipamhost details..."
   echo "################# [MOS IPAMHOST DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
@@ -1556,7 +1558,7 @@ if [[ -n "$MCCNAME" ]]; then
   done <$LOGPATH/mos-ipamhost
 fi
 if [[ -n "$MCCNAME" ]]; then
-  OUT="$LOGPATH/mos_l2template"
+  OUT="$LOGPATH/mos_l2template.yaml"
   echo "Gathering MOS L2template details..."
   echo "################# [MOS L2TEMPLATE DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
@@ -1579,7 +1581,7 @@ if [[ -n "$MCCNAME" ]]; then
 fi
 
 if [[ -n "$MCCNAME" ]]; then
-  OUT="$LOGPATH/mcc_subnet"
+  OUT="$LOGPATH/mcc_subnet.yaml"
   echo "Gathering MCC subnet details..."
   echo "################# [MCC SUBNET DETAILS & AUDIT] #################" >"$OUT"
   grep $MCC_DIR/objects/namespaced/$MCCNAMESPACE/ipam.mirantis.com/subnets/ $LOGPATH/files >$LOGPATH/mcc-subnet
@@ -1631,7 +1633,7 @@ if [[ -n "$MCCNAME" ]]; then
 fi
 
 if [[ -n "$MCCNAME" ]]; then
-  OUT="$LOGPATH/mos_subnet"
+  OUT="$LOGPATH/mos_subnet.yaml"
   echo "Gathering MOS subnet details..."
   echo "################# [MOS SUBNET DETAILS & AUDIT] #################" >"$OUT"
   grep $MCC_DIR/objects/namespaced/$MOSNAMESPACE/ipam.mirantis.com/subnets/ $LOGPATH/files >$LOGPATH/mos-subnet
@@ -1683,7 +1685,7 @@ if [[ -n "$MCCNAME" ]]; then
 fi
 
 if [[ -n "$MOSNAME" ]] && [[ -d "$MOS_DIR/objects/namespaced/tf" ]]; then
-  OUT="$LOGPATH/mos_tf_status"
+  OUT="$LOGPATH/mos_tf_status.yaml"
   echo "Gathering MOS TF Status..."
   echo "################# [MOS TF COMPONENT STATUS] #################" >"$OUT"
   TF_FILES=$(find "$MOS_DIR/objects/namespaced/tf" -name "*.yaml" -maxdepth 3 2>/dev/null)
@@ -1691,11 +1693,12 @@ if [[ -n "$MOSNAME" ]] && [[ -d "$MOS_DIR/objects/namespaced/tf" ]]; then
     KIND=$(yq eval '.Object.kind // .kind' "$f" 2>/dev/null)
     [[ "$KIND" == "Pod" || "$KIND" == "Endpoints" || "$KIND" == "Service" ]] && continue
     echo "----------------------------------------------------" >>"$OUT"
+    echo "# $f" >>"$OUT"
     echo "### Component: $(basename "$f" .yaml) ($KIND)" >>"$OUT"
     yq eval '.Object.status // .status' "$f" 2>/dev/null >>"$OUT"
   done
 
-  OUT="$LOGPATH/mos_tf_logs"
+  OUT="$LOGPATH/mos_tf_logs.yaml"
   echo "Gathering MOS TF logs..."
   echo "################# [MOS TF LOGS DETAILS] #################" >"$OUT"
 
@@ -1736,7 +1739,7 @@ if [[ -n "$MOSNAME" ]] && [[ -d "$MOS_DIR/objects/namespaced/tf" ]]; then
   done <$LOGPATH/mos-tf-rabbitmq
 fi
 if [[ -n "$MCCNAME" ]]; then
-  OUT="$LOGPATH/mcc_upgrade_audit"
+  OUT="$LOGPATH/mcc_upgrade_audit.yaml"
   echo "Gathering MCC Upgrade details..."
   echo "################# [MCC UPGRADE AUDIT] #################" >"$OUT"
 
@@ -1800,7 +1803,7 @@ if [[ -n "$MCCNAME" ]]; then
 fi
 
 if [[ -n "$MOSNAME" ]]; then
-  OUT="$LOGPATH/mos_pv_pvc"
+  OUT="$LOGPATH/mos_pv_pvc.yaml"
   echo "Gathering MOS PV and PVC Correlation details..."
   echo "################# [MOS PV AND PVC CORRELATION] #################" >"$OUT"
 
@@ -1817,6 +1820,7 @@ if [[ -n "$MOSNAME" ]]; then
 
     if [[ -n "$CLAIM_NAME" && "$CLAIM_NAME" != "null" ]]; then
       echo "----------------------------------------------------" >>"$OUT"
+      echo "# $pv" >>"$OUT"
       echo "### PV: $PV_NAME <-> PVC: $CLAIM_NS/$CLAIM_NAME" >>"$OUT"
       echo "#### PV Details ($pv):" >>"$OUT"
       yq eval '.Object.spec // .spec' "$pv" 2>/dev/null >>"$OUT"
@@ -1872,7 +1876,7 @@ if [[ -n "$MOSNAME" ]]; then
 fi
 
 # --- STORAGE & CSI AUDIT ---
-OUT="$LOGPATH/cluster_storage_csi"
+OUT="$LOGPATH/cluster_storage_csi.yaml"
 echo "Gathering Storage Class and CSI details..."
 echo "################# [STORAGE CLASS & CSI AUDIT] #################" >"$OUT"
 echo "## Storage Classes:" >>"$OUT"
@@ -1890,7 +1894,7 @@ done
 
 # MCC Analysis
 if [[ -n "$MCCNAME" ]]; then
-  OUT="$LOGPATH/mcc_cluster"
+  OUT="$LOGPATH/mcc_cluster.yaml"
   echo "Gathering MCC cluster details..."
   echo "################# [MCC CLUSTER DETAILS] #################" >"$OUT"
   MCC_YAML="$MCC_DIR/objects/namespaced/$MCCNAMESPACE/cluster.k8s.io/clusters/$MCCNAME.yaml"
@@ -2008,7 +2012,7 @@ if [[ -n "$MCCNAME" ]]; then
   fi
 fi
 if [[ -n "$MCCNAME" ]]; then
-  OUT="$LOGPATH/mcc_events"
+  OUT="$LOGPATH/mcc_events.yaml"
   echo "Gathering MCC events..."
   echo "################# [MCC EVENTS (WARNING+ERRORS)] #################" >"$OUT"
   echo "" >>"$OUT"
@@ -2020,7 +2024,7 @@ fi
 
 # 5. MCC Stacklight & Patroni Details Card
 if [[ -d "$MCC_DIR/objects/namespaced/stacklight" ]]; then
-  OUT="$LOGPATH/mcc_stacklight"
+  OUT="$LOGPATH/mcc_stacklight.yaml"
   echo "Gathering MCC Stacklight details..."
   echo "################# [MCC STACKLIGHT & PATRONI DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
@@ -2051,7 +2055,7 @@ fi
 
 # 6. MCC Credentials Card
 if [[ -n "$MCCNAME" ]]; then
-  OUT="$LOGPATH/mcc_credentials"
+  OUT="$LOGPATH/mcc_credentials.yaml"
   echo "Scanning MCC Secrets for Credentials..."
   TMP_CREDS="$LOGPATH/mcc_creds_other"
   TMP_TOKENS="$LOGPATH/mcc_creds_tokens"
@@ -2135,7 +2139,7 @@ if [[ -n "$MCCNAME" ]]; then
   rm "$TMP_CREDS" "$TMP_TOKENS"
 fi
 if [[ -n "$MCCNAME" ]]; then
-  OUT="$LOGPATH/mcc_nodes"
+  OUT="$LOGPATH/mcc_nodes.yaml"
   echo "Gathering MCC node details..."
   echo "################# [MCC NODE DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
@@ -2157,7 +2161,7 @@ if [[ -n "$MCCNAME" ]]; then
   done <$LOGPATH/mcc-nodes
 fi
 if [[ -n "$MCCNAME" ]]; then
-  OUT="$LOGPATH/mcc_lcmmachine"
+  OUT="$LOGPATH/mcc_lcmmachine.yaml"
   echo "Gathering MCC LCM machine details..."
   echo "################# [MCC LCM MACHINE DETAILS] #################" >"$OUT"
   grep $MCC_DIR/objects/namespaced/$MCCNAMESPACE/lcm.mirantis.com/lcmmachines $LOGPATH/files >$LOGPATH/mcc-lcmmachine
@@ -2179,7 +2183,7 @@ if [[ -n "$MCCNAME" ]]; then
   echo "" >>"$OUT"
 fi
 if [[ -n "$MCCNAME" ]]; then
-  OUT="$LOGPATH/mcc_machine"
+  OUT="$LOGPATH/mcc_machine.yaml"
   echo "Gathering MCC machine details..."
   echo "################# [MCC MACHINE DETAILS] #################" >"$OUT"
   grep $MCC_DIR/objects/namespaced/default/cluster.k8s.io/machines $LOGPATH/files >$LOGPATH/mcc-machine
@@ -2201,7 +2205,7 @@ if [[ -n "$MCCNAME" ]]; then
   echo "" >>"$OUT"
 fi
 if [[ -n "$MCCNAME" ]]; then
-  OUT="$LOGPATH/mcc_mariadb"
+  OUT="$LOGPATH/mcc_mariadb.yaml"
   echo "Gathering MCC Mariadb details and logs..."
   echo "################# [MCC MARIADB DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
@@ -2232,7 +2236,7 @@ if [[ -n "$MCCNAME" ]]; then
 fi
 # --- MCC CERTIFICATE AUTO-SCAN ---
 if [[ -n "$MCCNAME" ]]; then
-  OUT="$LOGPATH/mcc_certs"
+  OUT="$LOGPATH/mcc_certs.yaml"
   echo "Scanning MCC Secrets for PEM data..."
   echo "################# [MCC CERTIFICATE & KEY] #################" >"$OUT"
   find "$MCC_DIR" -path "*/core/secrets/*.yaml" -type f | while read -r secret_file; do
@@ -2261,6 +2265,7 @@ if [[ -n "$MCCNAME" ]]; then
     if [ "$FOUND_IN_FILE" = true ]; then
       echo "----------------------------------------------------" >>"$OUT"
       [[ -n "$FILE_ALERTS" ]] && echo "$FILE_ALERTS" >>"$OUT"
+      echo "# [FILE]: $secret_file" >>"$OUT"
       echo "## File: $secret_file" >>"$OUT"
       audit_k8s_secret "$secret_file" >>"$OUT"
     fi
@@ -2268,7 +2273,7 @@ if [[ -n "$MCCNAME" ]]; then
 fi
 # --- MOS CERTIFICATE AUTO-SCAN ---
 if [[ -n "$MOSNAME" ]]; then
-  OUT="$LOGPATH/mos_certs"
+  OUT="$LOGPATH/mos_certs.yaml"
   echo "Scanning MOS Secrets for PEM data..."
   echo "################# [MOS CERTIFICATE & KEY] #################" >"$OUT"
   find "$MOS_DIR" -path "*/core/secrets/*.yaml" -type f | while read -r secret_file; do
@@ -2297,13 +2302,14 @@ if [[ -n "$MOSNAME" ]]; then
     if [ "$FOUND_IN_FILE" = true ]; then
       echo "----------------------------------------------------" >>"$OUT"
       [[ -n "$FILE_ALERTS" ]] && echo "$FILE_ALERTS" >>"$OUT"
+      echo "# [FILE]: $secret_file" >>"$OUT"
       echo "## File: $secret_file" >>"$OUT"
       audit_k8s_secret "$secret_file" >>"$OUT"
     fi
   done
 fi
 if [[ -n "$MCCNAME" ]]; then
-  OUT="$LOGPATH/mcc_ipamhost"
+  OUT="$LOGPATH/mcc_ipamhost.yaml"
   echo "Gathering MCC Ipamhost details..."
   echo "################# [MCC IPAMHOST DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
@@ -2325,7 +2331,7 @@ if [[ -n "$MCCNAME" ]]; then
   done <$LOGPATH/mcc-ipamhost
 fi
 if [[ -n "$MCCNAME" ]]; then
-  OUT="$LOGPATH/mcc_l2template"
+  OUT="$LOGPATH/mcc_l2template.yaml"
   echo "Gathering MCC L2template details..."
   echo "################# [MCC L2TEMPLATE DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
@@ -2348,7 +2354,7 @@ if [[ -n "$MCCNAME" ]]; then
 fi
 # --- MCC NETWORKING (Subnets & IPPools) ---
 if [[ -n "$MOSNAME" ]]; then
-  OUT="$LOGPATH/mos_networking_audit"
+  OUT="$LOGPATH/mos_networking_audit.yaml"
   echo "Gathering MOS Networking details..."
   echo "################# [MOS SUBNET & IPPOOL RESUME] #################" >"$OUT"
 
@@ -2409,7 +2415,7 @@ if [[ -n "$MOSNAME" ]]; then
 fi
 
 if [[ -n "$MCCNAME" ]]; then
-  OUT="$LOGPATH/mcc_networking_audit"
+  OUT="$LOGPATH/mcc_networking_audit.yaml"
   echo "Gathering MCC Networking details..."
   echo "################# [MCC SUBNET & IPPOOL RESUME] #################" >"$OUT"
 
@@ -2474,13 +2480,14 @@ fi
 
 # --- BAREMETAL PROVIDER AUDIT ---
 if [[ -n "$MCC_DIR" ]]; then
-  OUT="$LOGPATH/mcc_baremetal_provider"
+  OUT="$LOGPATH/mcc_baremetal_provider.yaml"
   echo "Gathering Baremetal Provider details..."
   echo "################# [BAREMETAL PROVIDER AUDIT] #################" >"$OUT"
 
   # 1. Deployment and Status
   BM_DEPLOY=$(find "$MCC_DIR" -path "*/kaas/apps/deployments/baremetal-provider.yaml" | head -n 1)
   if [[ -f "$BM_DEPLOY" ]]; then
+    echo "# [FILE]: $BM_DEPLOY" >>"$OUT"
     echo "## Deployment Status:" >>"$OUT"
     yq eval '.Object.status // .status' "$BM_DEPLOY" 2>/dev/null | sed 's/^/  /' >>"$OUT"
     IMAGE=$(yq eval '.Object.spec.template.spec.containers[0].image // .spec.template.spec.containers[0].image' "$BM_DEPLOY" 2>/dev/null)
@@ -2599,14 +2606,17 @@ get_pod_line() {
   # Calculate restarts
   local RESTARTS=$(yq eval '.Object.status.containerStatuses[].restartCount' "$f" 2>/dev/null | awk '{sum+=$1} END {print sum+0}')
 
+  local NODE=$(yq eval '.Object.spec.nodeName // .spec.nodeName' "$f" 2>/dev/null)
+  [[ "$NODE" == "null" ]] && NODE="N/A"
+
   local AGE=$(get_age "$f")
 
-  printf "%-25s %-50s %-8s %-20s %-10s %-5s\n" "$NS" "$NAME" "${READY_COUNT}/${TOTAL_COUNT}" "$STATUS" "$RESTARTS" "$AGE"
+  printf "%-25s %-50s %-8s %-20s %-10s %-10s %-25s\n" "$NS" "$NAME" "${READY_COUNT}/${TOTAL_COUNT}" "$STATUS" "$RESTARTS" "$AGE" "$NODE"
 }
 # --- MCC POD AUDIT ---
 if [[ -n "$MCC_DIR" ]]; then
-  OUT_RUNNING="$LOGPATH/mcc_running_pods"
-  OUT_FAILED="$LOGPATH/mcc_failed_completed_pods"
+  OUT_RUNNING="$LOGPATH/mcc_running_pods.yaml"
+  OUT_FAILED="$LOGPATH/mcc_failed_completed_pods.yaml"
   
   echo "Auditing MCC Pods..."
   
@@ -2617,10 +2627,16 @@ if [[ -n "$MCC_DIR" ]]; then
   COUNT_RUNNING=0
   COUNT_FAILED=0
   
-  HEADER=$(printf "%-25s %-50s %-8s %-20s %-10s %-5s\n" "NAMESPACE" "NAME" "READY" "STATUS" "RESTARTS" "AGE")
+  HEADER=$(printf "%-25s %-50s %-8s %-20s %-10s %-10s %-25s\n" "NAMESPACE" "NAME" "READY" "STATUS" "RESTARTS" "AGE" "NODE")
   echo "$HEADER" >>"$BUF_RUNNING"
   echo "$HEADER" >>"$BUF_FAILED"
   echo "----------------------------------------------------" >>"$BUF_FAILED"
+
+  # 1. Collect all files for the links at the top
+  find "$MCC_DIR" -path "*/core/pods/*.yaml" -type f | while read -r f; do
+    echo "# [FILE]: $f" >>"$OUT_RUNNING"
+    echo "# [FILE]: $f" >>"$OUT_FAILED"
+  done
 
   while read -r f; do
     PHASE=$(yq eval '.Object.status.phase // .status.phase' "$f" 2>/dev/null)
@@ -2630,7 +2646,6 @@ if [[ -n "$MCC_DIR" ]]; then
     
     if [[ "$PHASE" == "Running" ]]; then
       ((MCC_RUNNING++))
-      echo "# $f" >>"$BUF_RUNNING"
       echo "$LINE" >>"$BUF_RUNNING"
     else
       if [[ "$PHASE" == "Succeeded" ]] || [[ "$PHASE" == "Completed" ]]; then
@@ -2641,7 +2656,6 @@ if [[ -n "$MCC_DIR" ]]; then
       fi
       
       ((COUNT_FAILED++))
-      echo "# $f" >>"$BUF_FAILED"
       echo "$LINE" >>"$BUF_FAILED"
       
       # Only gather logs for FAILED pods (not Succeeded/Completed)
@@ -2674,8 +2688,8 @@ fi
 
 # --- MOS POD AUDIT ---
 if [[ -n "$MOS_DIR" ]]; then
-  OUT_RUNNING="$LOGPATH/mos_running_pods"
-  OUT_FAILED="$LOGPATH/mos_failed_completed_pods"
+  OUT_RUNNING="$LOGPATH/mos_running_pods.yaml"
+  OUT_FAILED="$LOGPATH/mos_failed_completed_pods.yaml"
   
   echo "Auditing MOS Pods..."
   
@@ -2686,10 +2700,16 @@ if [[ -n "$MOS_DIR" ]]; then
   COUNT_RUNNING=0
   COUNT_FAILED=0
   
-  HEADER=$(printf "%-25s %-50s %-8s %-20s %-10s %-5s\n" "NAMESPACE" "NAME" "READY" "STATUS" "RESTARTS" "AGE")
+  HEADER=$(printf "%-25s %-50s %-8s %-20s %-10s %-10s %-25s\n" "NAMESPACE" "NAME" "READY" "STATUS" "RESTARTS" "AGE" "NODE")
   echo "$HEADER" >>"$BUF_RUNNING"
   echo "$HEADER" >>"$BUF_FAILED"
   echo "----------------------------------------------------" >>"$BUF_FAILED"
+
+  # 1. Collect all files for the links at the top
+  find "$MOS_DIR" -path "*/core/pods/*.yaml" -type f | while read -r f; do
+    echo "# [FILE]: $f" >>"$OUT_RUNNING"
+    echo "# [FILE]: $f" >>"$OUT_FAILED"
+  done
 
   while read -r f; do
     PHASE=$(yq eval '.Object.status.phase // .status.phase' "$f" 2>/dev/null)
@@ -2699,7 +2719,6 @@ if [[ -n "$MOS_DIR" ]]; then
     
     if [[ "$PHASE" == "Running" ]]; then
       ((MOS_RUNNING++))
-      echo "# $f" >>"$BUF_RUNNING"
       echo "$LINE" >>"$BUF_RUNNING"
     else
       if [[ "$PHASE" == "Succeeded" ]] || [[ "$PHASE" == "Completed" ]]; then
@@ -2710,7 +2729,6 @@ if [[ -n "$MOS_DIR" ]]; then
       fi
 
       ((COUNT_FAILED++))
-      echo "# $f" >>"$BUF_FAILED"
       echo "$LINE" >>"$BUF_FAILED"
       
       # Only gather logs for FAILED pods (not Succeeded/Completed)
@@ -2746,29 +2764,38 @@ if [[ -n "$MCC_DIR" ]]; then
   echo "Auditing MCC Deployments, StatefulSets, and DaemonSets..."
   
   # Deployments
-  OUT_DEP="$LOGPATH/mcc_deployments"
+  OUT_DEP="$LOGPATH/mcc_deployments.yaml"
   echo "################# [MCC DEPLOYMENTS] #################" >"$OUT_DEP"
+  # List files at the top
+  find "$MCC_DIR" -path "*/apps/deployments/*.yaml" -type f | while read -r f; do
+    echo "# [FILE]: $f" >>"$OUT_DEP"
+  done
   printf "%-25s %-50s %-8s %-12s %-12s %-10s\n" "NAMESPACE" "NAME" "READY" "UP-TO-DATE" "AVAILABLE" "AGE" >>"$OUT_DEP"
   while read -r f; do
-    echo "# $f" >>"$OUT_DEP"
     get_deployment_line "$f" >>"$OUT_DEP"
   done < <(find "$MCC_DIR" -path "*/apps/deployments/*.yaml" -type f)
 
   # StatefulSets
-  OUT_STS="$LOGPATH/mcc_statefulsets"
+  OUT_STS="$LOGPATH/mcc_statefulsets.yaml"
   echo "################# [MCC STATEFULSETS] #################" >"$OUT_STS"
+  # List files at the top
+  find "$MCC_DIR" -path "*/apps/statefulsets/*.yaml" -type f | while read -r f; do
+    echo "# [FILE]: $f" >>"$OUT_STS"
+  done
   printf "%-25s %-50s %-8s %-10s\n" "NAMESPACE" "NAME" "READY" "AGE" >>"$OUT_STS"
   while read -r f; do
-    echo "# $f" >>"$OUT_STS"
     get_statefulset_line "$f" >>"$OUT_STS"
   done < <(find "$MCC_DIR" -path "*/apps/statefulsets/*.yaml" -type f)
 
   # DaemonSets
-  OUT_DS="$LOGPATH/mcc_daemonsets"
+  OUT_DS="$LOGPATH/mcc_daemonsets.yaml"
   echo "################# [MCC DAEMONSETS] #################" >"$OUT_DS"
+  # List files at the top
+  find "$MCC_DIR" -path "*/apps/daemonsets/*.yaml" -type f | while read -r f; do
+    echo "# [FILE]: $f" >>"$OUT_DS"
+  done
   printf "%-25s %-50s %-8s %-8s %-8s %-10s %-10s %-22s %-10s\n" "NAMESPACE" "NAME" "DESIRED" "CURRENT" "READY" "UP-TO-DATE" "AVAILABLE" "NODE-SELECTOR" "AGE" >>"$OUT_DS"
   while read -r f; do
-    echo "# $f" >>"$OUT_DS"
     get_daemonset_line "$f" >>"$OUT_DS"
   done < <(find "$MCC_DIR" -path "*/apps/daemonsets/*.yaml" -type f)
 fi
@@ -2778,34 +2805,43 @@ if [[ -n "$MOS_DIR" ]]; then
   echo "Auditing MOS Deployments, StatefulSets, and DaemonSets..."
   
   # Deployments
-  OUT_DEP="$LOGPATH/mos_deployments"
+  OUT_DEP="$LOGPATH/mos_deployments.yaml"
   echo "################# [MOS DEPLOYMENTS] #################" >"$OUT_DEP"
+  # List files at the top
+  find "$MOS_DIR" -path "*/apps/deployments/*.yaml" -type f | while read -r f; do
+    echo "# [FILE]: $f" >>"$OUT_DEP"
+  done
   printf "%-25s %-50s %-8s %-12s %-12s %-10s\n" "NAMESPACE" "NAME" "READY" "UP-TO-DATE" "AVAILABLE" "AGE" >>"$OUT_DEP"
   while read -r f; do
-    echo "# $f" >>"$OUT_DEP"
     get_deployment_line "$f" >>"$OUT_DEP"
   done < <(find "$MOS_DIR" -path "*/apps/deployments/*.yaml" -type f)
 
   # StatefulSets
-  OUT_STS="$LOGPATH/mos_statefulsets"
+  OUT_STS="$LOGPATH/mos_statefulsets.yaml"
   echo "################# [MOS STATEFULSETS] #################" >"$OUT_STS"
+  # List files at the top
+  find "$MOS_DIR" -path "*/apps/statefulsets/*.yaml" -type f | while read -r f; do
+    echo "# [FILE]: $f" >>"$OUT_STS"
+  done
   printf "%-25s %-50s %-8s %-10s\n" "NAMESPACE" "NAME" "READY" "AGE" >>"$OUT_STS"
   while read -r f; do
-    echo "# $f" >>"$OUT_STS"
     get_statefulset_line "$f" >>"$OUT_STS"
   done < <(find "$MOS_DIR" -path "*/apps/statefulsets/*.yaml" -type f)
 
   # DaemonSets
-  OUT_DS="$LOGPATH/mos_daemonsets"
+  OUT_DS="$LOGPATH/mos_daemonsets.yaml"
   echo "################# [MOS DAEMONSETS] #################" >"$OUT_DS"
+  # List files at the top
+  find "$MOS_DIR" -path "*/apps/daemonsets/*.yaml" -type f | while read -r f; do
+    echo "# [FILE]: $f" >>"$OUT_DS"
+  done
   printf "%-25s %-50s %-8s %-8s %-8s %-10s %-10s %-22s %-10s\n" "NAMESPACE" "NAME" "DESIRED" "CURRENT" "READY" "UP-TO-DATE" "AVAILABLE" "NODE-SELECTOR" "AGE" >>"$OUT_DS"
   while read -r f; do
-    echo "# $f" >>"$OUT_DS"
     get_daemonset_line "$f" >>"$OUT_DS"
   done < <(find "$MOS_DIR" -path "*/apps/daemonsets/*.yaml" -type f)
 fi
 # --- MCC LICENSE & RELEASES ---
-OUT="$LOGPATH/mcc_license_releases"
+OUT="$LOGPATH/mcc_license_releases.yaml"
 echo "Gathering License and Releases..."
 echo "################# [LICENSE & RELEASE DETAILS] #################" >"$OUT"
 LICENSE_FILE=$(grep "kaas.mirantis.com/licenses/license.yaml" "$LOGPATH/files" | head -n 1)
@@ -2824,7 +2860,7 @@ ls "$BASE_DIR/kaas-mgmt/objects/cluster/kaas.mirantis.com/kaasreleases/" 2>/dev/
 
 # --- MCC UPGRADE & RELEASE AUDIT ---
 if [[ -n "$MCC_DIR" ]]; then
-  OUT="$LOGPATH/mcc_upgrade_audit"
+  OUT="$LOGPATH/mcc_upgrade_audit.yaml"
   echo "Auditing MCC Upgrade and Release status..."
   echo "################# [MCC UPGRADE & RELEASE AUDIT] #################" >"$OUT"
 
@@ -2889,7 +2925,7 @@ fi
 
 # --- HOSTOS CONFIGURATION STATUS ---
 if [[ -n "$MCC_DIR" ]]; then
-  OUT="$LOGPATH/mcc_hostos_config"
+  OUT="$LOGPATH/mcc_hostos_config.yaml"
   echo "Gathering HostOS Configuration status..."
   echo "################# [HOSTOS CONFIGURATION STATUS] #################" >"$OUT"
   HOSTOS_FILES=$(find "$MCC_DIR" -path "*/hostosconfigurationmodules/*.yaml" 2>/dev/null)
@@ -2906,14 +2942,14 @@ if [[ -n "$MCC_DIR" ]]; then
 fi
 
 # --- ADMISSION WEBHOOKS ---
-OUT="$LOGPATH/cluster_webhooks"
+OUT="$LOGPATH/cluster_webhooks.yaml"
 echo "Auditing Admission Webhooks..."
 echo "################# [MOS/MCC WEBHOOK CONFIGURATIONS] #################" >"$OUT"
 find "$BASE_DIR" -path "*/admissionregistration.k8s.io/*" -name "*.yaml" -print >>"$OUT"
 echo -e "\n## Failed calls from events logs:" >>"$OUT"
 grep -rEi "failed calling webhook|webhook.*denied" "$BASE_DIR"/*/objects/events.log 2>/dev/null >>"$OUT"
 if [[ -n "$MCCNAME" ]]; then
-  OUT="$LOGPATH/mcc_pv_pvc"
+  OUT="$LOGPATH/mcc_pv_pvc.yaml"
   echo "Gathering MCC PV and PVC details..."
   echo "################# [MCC PV AND PVC DETAILS] #################" >"$OUT"
   grep $MCC_DIR/objects/cluster/core/persistentvolumes/ $LOGPATH/files >$LOGPATH/mcc-pv
@@ -2969,7 +3005,7 @@ if [[ -n "$MCCNAME" ]]; then
 fi
 # --- MCC SERVICES ---
 if [[ -n "$MCC_DIR" ]]; then
-  OUT="$LOGPATH/mcc_services"
+  OUT="$LOGPATH/mcc_services.yaml"
   echo "Gathering MCC Service details..."
   echo "################# [MCC SERVICES SUMMARY] #################" >"$OUT"
   find "$MCC_DIR" -path "*/core/services/*.yaml" -type f | while read -r f; do
@@ -2987,7 +3023,7 @@ fi
 
 # --- MOS SERVICES ---
 if [[ -n "$MOS_DIR" ]]; then
-  OUT="$LOGPATH/mos_services"
+  OUT="$LOGPATH/mos_services.yaml"
   echo "Gathering MOS Service details..."
   echo "################# [MOS SERVICES SUMMARY] #################" >"$OUT"
   find "$MOS_DIR" -path "*/core/services/*.yaml" -type f | while read -r f; do
@@ -3187,7 +3223,12 @@ EOF
     TITLE=$(basename "$yaml_file" .yaml | tr '_' ' ' | tr '[:lower:]' '[:upper:]')
     ANCHOR=$(echo "$TITLE" | tr ' ' '-')
 
-    FILES=$(grep -oE '(\.?/[-a-zA-Z0-9._/]+\.(log|yaml|json|txt|conf))' "$yaml_file" | sort -u)
+    # Extract files: check for '# [FILE]:' prefix first, fallback to general grep
+    FILES=$(grep "^# \[FILE\]: " "$yaml_file" | cut -d' ' -f3- | sort -u)
+    if [[ -z "$FILES" ]]; then
+       FILES=$(grep -oE '(\.?/[-a-zA-Z0-9._/]+\.(log|yaml|json|txt|conf))' "$yaml_file" | sort -u)
+    fi
+
     LINKS_HTML=""
     if [[ -n "$FILES" ]]; then
       FILE_COUNT=$(echo "$FILES" | wc -l)
@@ -3239,7 +3280,7 @@ EOF
       echo "  </h2>"
       echo "$LINKS_HTML"
       echo "  <pre class='language-yaml raw-code'><code>"
-      sed 's/\xc2\xa0/ /g; s/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' "$yaml_file"
+      sed '/^# \[FILE\]: /d; s/\xc2\xa0/ /g; s/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' "$yaml_file"
       echo "  </code></pre>"
       echo "</div>"
     } >>"$HTML_REPORT"
