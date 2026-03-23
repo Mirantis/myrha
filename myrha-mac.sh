@@ -495,7 +495,16 @@ if [[ -n "$MCCNAME" ]]; then
     MCC_VER_STR=" (KaaS: $MCC_BUG_VER)"
     
     MCC_DOC_URL="https://docs.mirantis.com/container-cloud/latest/release-notes/releases/${M[0]}-${M[1]}-${M[2]}.html"
+    
+    # MCC Jira Filters
     MCC_JIRA_URL="https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22KaaS%20$MCC_BUG_VER%22"
+    [[ "$MCC_BUG_VER" == "2.31.0" ]] && MCC_JIRA_URL="https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31%20%2F%20MOSK%2026.1%22"
+    [[ "$MCC_BUG_VER" == "2.31.1" ]] && MCC_JIRA_URL="https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.1%20%2F%20MOSK%2025.2.6%20(Patch%20release6)%22"
+    [[ "$MCC_BUG_VER" == "2.31.2" ]] && MCC_JIRA_URL="https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.2%20%2F%20MOSK%2025.2.7%20(Patch%20release7)%22"
+    [[ "$MCC_BUG_VER" == "2.31.3" ]] && MCC_JIRA_URL="https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.3%20%2F%20MOSK%2025.2.8%20(Patch%20release8)%22"
+    [[ "$MCC_BUG_VER" == "2.31.4" ]] && MCC_JIRA_URL="https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.4%20%2F%20MOSK%2025.2.9%20(Patch%20release9)%22"
+    [[ "$MCC_BUG_VER" == "2.31.5" ]] && MCC_JIRA_URL="https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.5%20%2F%20MOSK%2026.1.1%22"
+    [[ "$MCC_BUG_VER" == "2.32.0" ]] && MCC_JIRA_URL="https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.32%20%2F%20MOSK%2026.2%22"
   fi
 fi
 
@@ -515,7 +524,13 @@ if [[ -n "$MOSNAME" ]]; then
      else
         MOS_DOC_URL="https://docs.mirantis.com/mosk/24.1-and-earlier/release-notes/release-notes-mosk-old/${V[3]}.${V[4]}-series/${V[3]}.${V[4]}.${V[5]}.html"
      fi
+     
+     # MOS Jira Filters
      MOS_JIRA_URL="https://mirantis.jira.com/issues/?jql=affectedversion%20%3D%20%22MOSK%20$MOS_BUG_VER%22"
+     [[ "$MOS_BUG_VER" == "25.2.9" ]] && MOS_JIRA_URL="https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.4%20%2F%20MOSK%2025.2.9%20(Patch%20release9)%22"
+     [[ "$MOS_BUG_VER" == "26.1."* ]] && MOS_JIRA_URL="https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31%20%2F%20MOSK%2026.1%22"
+     [[ "$MOS_BUG_VER" == "26.1.1" ]] && MOS_JIRA_URL="https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.5%20%2F%20MOSK%2026.1.1%22"
+     [[ "$MOS_BUG_VER" == "26.2."* ]] && MOS_JIRA_URL="https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.32%20%2F%20MOSK%2026.2%22"
   fi
 fi
 
@@ -583,6 +598,29 @@ if [[ -n "$MCCNAME" ]]; then
   find "$MCC_DIR" -path "*/kaas/core/pods/lcm-lcm-controller-*/controller.log" | sort | while read -r log; do
     echo "### Pod: /${log#./}" >>"$OUT"
     grep -Ei "error|fail|warning|warn" "$log" | tail -n 10 >>"$OUT"
+  done
+
+  echo -e "\n## Audit: Known Issues Checks:" >>"$OUT"
+  echo "### [FIELD-8106] Keepalived Flapping Check:" >>"$OUT"
+  find "$MCC_DIR" -path "*/kaas/core/pods/mcc-keepalived-*/keepalived.log" 2>/dev/null | while read -r log; do
+    if grep -q "forcing new election" "$log"; then
+       echo "🛑 ALERT: 'forcing new election' found in /${log#./}" >>"$OUT"
+       grep "forcing new election" "$log" | tail -n 5 >>"$OUT"
+    fi
+  done
+
+  echo "### [Bug 58728] Auditd Managed Field Check:" >>"$OUT"
+  find "$MCC_DIR" -path "*/clusters/*.yaml" 2>/dev/null | while read -r f; do
+    if grep -q "auditd:" "$f" && grep -A 5 "auditd:" "$f" | grep -q "managed: false"; then
+       echo "⚠️  INFO: 'managed: false' found for auditd in $(basename "$f") (Expected for 2.31.0+)" >>"$OUT"
+    fi
+  done
+
+  echo "### [Bug 56677] Bare Metal Deletion Failure Check:" >>"$OUT"
+  find "$MCC_DIR" -path "*/kaas/core/pods/lcm-lcm-controller-*/controller.log" 2>/dev/null | while read -r log; do
+    if grep -q "Cleanup cannot be performed without target_storage spec" "$log"; then
+       echo "🛑 ALERT: Bug 56677 (BM Deletion failure) found in /${log#./}" >>"$OUT"
+    fi
   done
 fi
 
