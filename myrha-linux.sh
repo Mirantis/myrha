@@ -1051,6 +1051,8 @@ if [[ -n "$MOSNAME" ]]; then
     [[ "$MOS_BUG_VER" == "25.2.4" ]] && MOS_JIRA_URL="https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.4%20%2F%20MOSK%2025.2.4%20(Patch%20release4)%22"
     [[ "$MOS_BUG_VER" == "25.2.5" ]] && MOS_JIRA_URL="https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.30.5%20%2F%20MOSK%2025.2.5%20(Patch%20release5)%22"
     [[ "$MOS_BUG_VER" == "26.1."* ]] && MOS_JIRA_URL="https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31%20%2F%20MOSK%2026.1%22"
+    [[ "$MOS_BUG_VER" == "26.1.1" ]] && MOS_JIRA_URL="https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.5%20%2F%20MOSK%2026.1.1%22"
+    [[ "$MOS_BUG_VER" == "26.2."* ]] && MOS_JIRA_URL="https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.32%20%2F%20MOSK%2026.2%22"
 
     MOS_LINKS_HTML="<div style=\"margin-bottom: 10px;\"><strong>MOS Bugs - $MOS_BUG_VER:</strong><br><a href=\"$MOS_DOC_URL\" target=\"_blank\">Release Notes</a> | <a href=\"$MOS_JIRA_URL\" target=\"_blank\">Jira Bugs</a></div>"
     
@@ -1955,6 +1957,8 @@ if [[ -n "$MCCNAME" ]]; then
     [[ "$MCC_BUG_VER" == "2.31.2" ]] && MCC_JIRA_URL="https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.2%20%2F%20MOSK%2025.2.7%20(Patch%20release7)%22"
     [[ "$MCC_BUG_VER" == "2.31.3" ]] && MCC_JIRA_URL="https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.3%20%2F%20MOSK%2025.2.8%20(Patch%20release8)%22"
     [[ "$MCC_BUG_VER" == "2.31.4" ]] && MCC_JIRA_URL="https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.4%20%2F%20MOSK%2025.2.9%20(Patch%20release9)%22"
+    [[ "$MCC_BUG_VER" == "2.31.5" ]] && MCC_JIRA_URL="https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.31.5%20%2F%20MOSK%2026.1.1%22"
+    [[ "$MCC_BUG_VER" == "2.32.0" ]] && MCC_JIRA_URL="https://mirantis.jira.com/issues?jql=affectedversion%20%3D%20%22KaaS%202.32%20%2F%20MOSK%2026.2%22"
     
     # Improved MKE Extraction
     MKE_RAW=$(grep -m1 "release: mke-" "$MCC_YAML" | sed -e 's/.*mke-//' -e 's/[[:space:]]//g' -e 's/-/./g')
@@ -1988,11 +1992,35 @@ if [[ -n "$MCCNAME" ]]; then
     fi
 
     # Logs from lcm-lcm-controller
-    echo -e "\n## LCM Controller Logs (Errors/Warnings):" >>"$OUT"
+    echo "## LCM Controller Logs (Errors/Warnings):" >>"$OUT"
     find "$MCC_DIR" -path "*/kaas/core/pods/lcm-lcm-controller-*/controller.log" | sort | while read -r log; do
       echo "### Pod: /${log#./}" >>"$OUT"
-      grep -Ei "error|fail|warning|warn" "$log" | tail -n 20 >>"$OUT"
+      grep -Ei "error|fail|warning|warn|context deadline exceeded" "$log" | tail -n 10 >>"$OUT"
     done
+
+    echo -e "\n## Audit: Known Issues Checks:" >>"$OUT"
+    echo "### [FIELD-8106] Keepalived Flapping Check:" >>"$OUT"
+    find "$MCC_DIR" -path "*/kaas/core/pods/mcc-keepalived-*/keepalived.log" 2>/dev/null | while read -r log; do
+      if grep -q "forcing new election" "$log"; then
+         echo "🛑 ALERT: 'forcing new election' found in /${log#./}" >>"$OUT"
+         grep "forcing new election" "$log" | tail -n 5 >>"$OUT"
+      fi
+    done
+
+    echo "### [Bug 58728] Auditd Managed Field Check:" >>"$OUT"
+    find "$MCC_DIR" -path "*/clusters/*.yaml" 2>/dev/null | while read -r f; do
+      if grep -q "auditd:" "$f" && grep -A 5 "auditd:" "$f" | grep -q "managed: false"; then
+         echo "⚠️  INFO: 'managed: false' found for auditd in $(basename "$f") (Expected for 2.31.0+)" >>"$OUT"
+      fi
+    done
+
+    echo "### [Bug 56677] Bare Metal Deletion Failure Check:" >>"$OUT"
+    find "$MCC_DIR" -path "*/kaas/core/pods/lcm-lcm-controller-*/controller.log" 2>/dev/null | while read -r log; do
+      if grep -q "Cleanup cannot be performed without target_storage spec" "$log"; then
+         echo "🛑 ALERT: Bug 56677 (BM Deletion failure) found in /${log#./}" >>"$OUT"
+      fi
+    done
+
 
     echo "Gathering Node Conditions..."
     echo "" >>"$OUT"
