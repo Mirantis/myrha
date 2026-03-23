@@ -5,7 +5,8 @@ Summarize supportdump files from Mirantis MCC/MOS clusters<br>
 
 # Features
 - ***Graphical dashboard for easy analyzis:***
-<img width="1827" height="936" alt="Screenshot From 2026-03-10 09-33-38" src="https://github.com/user-attachments/assets/a9674fb0-3a65-4822-a76b-320ff434f24b" />
+<img width="1866" height="976" alt="Screenshot_2026-03-23_20-57-18" src="https://github.com/user-attachments/assets/0399b43a-839f-45b7-89c0-ff214234f2fe" />
+
 
 
 - ***MKE, MOS and MCC cluster summary with a directly link to release notes and Jira tickets. Example:***
