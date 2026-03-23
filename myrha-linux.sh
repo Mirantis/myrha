@@ -933,8 +933,22 @@ MCC_NON_RUNNING_LIST=""
 MOS_NON_RUNNING_LIST=""
 
 # Discover MCC and MOS cluster directories
-MCC_DIR=$(find "$BASE_DIR" -type d -name "kaas-mgmt" | head -n 1)
-MOS_DIR=$(find "$BASE_DIR" -type d -name "mos" | head -n 1)
+# Priority 1: Top-level named directories
+MCC_DIR=$(find "$BASE_DIR" -maxdepth 1 -type d -name "kaas-mgmt" | head -n 1)
+MOS_DIR=$(find "$BASE_DIR" -maxdepth 1 -type d -name "mos" | head -n 1)
+
+# Fallback: Search deeper but avoid subdirectories of already found MCC_DIR
+if [[ -z "$MCC_DIR" ]]; then
+  MCC_DIR=$(find "$BASE_DIR" -type d -name "kaas-mgmt" | head -n 1)
+fi
+if [[ -z "$MOS_DIR" ]]; then
+  # Find "mos" but exclude paths that are inside MCC_DIR
+  if [[ -n "$MCC_DIR" ]]; then
+    MOS_DIR=$(find "$BASE_DIR" -type d -name "mos" | grep -v "$MCC_DIR" | head -n 1)
+  else
+    MOS_DIR=$(find "$BASE_DIR" -type d -name "mos" | head -n 1)
+  fi
+fi
 
 # Fallback robust discovery if standard names not found
 if [[ -z "$MCC_DIR" ]]; then
@@ -945,6 +959,16 @@ if [[ -z "$MOS_DIR" ]]; then
   INDICATOR_MOS=$(grep "/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/" "$LOGPATH/files" | head -n 1)
   [[ -n "$INDICATOR_MOS" ]] && MOS_DIR=$(echo "$INDICATOR_MOS" | sed 's|/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/.*||')
 fi
+
+# Ensure paths are absolute or properly relative for consistent usage
+[[ -n "$MCC_DIR" ]] && MCC_DIR=$(cd "$MCC_DIR" && pwd)
+[[ -n "$MOS_DIR" ]] && MOS_DIR=$(cd "$MOS_DIR" && pwd)
+
+# Re-adjust to be relative to CWD if possible (cleaner logs)
+[[ -n "$MCC_DIR" ]] && MCC_DIR=${MCC_DIR#$FULL_CWD/}
+[[ -n "$MOS_DIR" ]] && MOS_DIR=${MOS_DIR#$FULL_CWD/}
+[[ "$MCC_DIR" == "$(pwd)" ]] && MCC_DIR="."
+[[ "$MOS_DIR" == "$(pwd)" ]] && MOS_DIR="."
 
 # Detect MCC Version
 MCC_VER_DETECTED="0.0.0"
@@ -1075,6 +1099,13 @@ if [[ -n "$MOSNAME" ]]; then
           echo "  lcmOperationStuckMessage: $STUCK_MSG" >>"$OUT"
         fi
         sed -n '/  status:/,/    requestedNodes:/p' $LCM_YAML >>"$OUT"
+      fi
+
+      if [[ -f "$MOS_CLUSTER_FILE" ]]; then
+        echo "## MOS Cluster Status (Cluster API):" >>"$OUT"
+        printf '# ' >>"$OUT"
+        ls $MOS_CLUSTER_FILE >>"$OUT"
+        yq eval '.Object.status.providerStatus | {"ready": .ready, "ceph": .ceph, "warnings": .warnings, "notReadyObjects": .notReadyObjects}' "$MOS_CLUSTER_FILE" >>"$OUT"
       fi
       echo "" >>"$OUT"
       echo "Gathering Node Conditions..."
