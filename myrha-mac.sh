@@ -129,15 +129,20 @@ echo "Scanning support dump structure..."
 find "$BASE_DIR" -type f \( -name "*.yaml" -o -name "*.log" -o -name "*.json" \) > "$LOGPATH/files"
 
 # Identify Management (MCC) and Managed (MOS) clusters
-MCC_DIR=$(grep "kaas-mgmt" "$LOGPATH/files" | head -n 1 | cut -d'/' -f1-2)
-[[ -z "$MCC_DIR" ]] && MCC_DIR=$(grep "mgmt" "$LOGPATH/files" | head -n 1 | cut -d'/' -f1-2)
+MCC_DIR=$(find "$BASE_DIR" -maxdepth 1 -type d -name "kaas-mgmt" | head -n 1)
+[[ -z "$MCC_DIR" ]] && MCC_DIR=$(find "$BASE_DIR" -type d -name "kaas-mgmt" | head -n 1)
+[[ -z "$MCC_DIR" ]] && MCC_DIR=$(grep "kaas-mgmt" "$LOGPATH/files" | head -n 1 | cut -d'/' -f1-2)
 [[ -z "$MCC_DIR" ]] && MCC_DIR="."
 
-MCCNAME=$(find "$MCC_DIR" -path "*/cluster.k8s.io/clusters/*.yaml" 2>/dev/null | grep -v default | xargs basename 2>/dev/null | sed 's/.yaml//' | head -n 1)
-[[ -z "$MCCNAME" ]] && MCCNAME=$(grep -r "kind: Cluster" "$MCC_DIR" 2>/dev/null | head -n 1 | cut -d: -f1 | xargs basename 2>/dev/null | sed 's/.yaml//')
-
-# Identify MOS Cluster
-MOS_DIR=$(grep -vE "kaas-mgmt|mgmt" "$LOGPATH/files" | grep "cluster/core/nodes" | head -n 1 | cut -d'/' -f1-2)
+MOS_DIR=$(find "$BASE_DIR" -maxdepth 1 -type d -name "mos" | head -n 1)
+if [[ -z "$MOS_DIR" ]]; then
+  if [[ -n "$MCC_DIR" ]]; then
+    MOS_DIR=$(find "$BASE_DIR" -type d -name "mos" | grep -v "$MCC_DIR" | head -n 1)
+  else
+    MOS_DIR=$(find "$BASE_DIR" -type d -name "mos" | head -n 1)
+  fi
+fi
+[[ -z "$MOS_DIR" ]] && MOS_DIR=$(grep -vE "kaas-mgmt|mgmt" "$LOGPATH/files" | grep "cluster/core/nodes" | head -n 1 | cut -d'/' -f1-2)
 MOSNAME=""
 if [[ -n "$MOS_DIR" && "$MOS_DIR" != "$MCC_DIR" ]]; then
    MOSNAME=$(basename "$MOS_DIR")
@@ -545,6 +550,15 @@ if [[ -n "$MOSNAME" ]]; then
   echo "Gathering MOS cluster details..."
   echo "################# [MOS CLUSTER DETAILS] #################" >"$OUT"
   echo "" >>"$OUT"
+
+  MOS_CLUSTER_FILE=$(find "$MCC_DIR" -path "*/cluster.k8s.io/clusters/*.yaml" | grep -v "/default/" | head -n 1)
+  if [[ -f "$MOS_CLUSTER_FILE" ]]; then
+    echo "## MOS Cluster Status (Cluster API):" >>"$OUT"
+    echo "# [FILE]: $MOS_CLUSTER_FILE" >>"$OUT"
+    yq eval '.Object.status.providerStatus | {"ready": .ready, "ceph": .ceph, "warnings": .warnings, "notReadyObjects": .notReadyObjects}' "$MOS_CLUSTER_FILE" 2>/dev/null >>"$OUT"
+    echo "" >>"$OUT"
+  fi
+
   MOS_OSD=$(find "$MOS_DIR" -path "*/lcm.mirantis.com/openstackdeployments/*.yaml" | head -n 1)
   if [[ -f "$MOS_OSD" ]]; then
     echo "# [FILE]: $MOS_OSD" >>"$OUT"
