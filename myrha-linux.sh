@@ -1095,7 +1095,6 @@ if [[ -n "$MOSNAME" ]]; then
   echo "Gathering MOS cluster events..."
   echo "################# [MOS EVENTS (WARNING+ERRORS)] #################" >"$OUT"
   echo "" >>"$OUT"
-  echo "## Analyzed files:" >>"$OUT"
   printf '# ' >>"$OUT"
   ls $MOS_DIR/objects/events.log >>"$OUT"
   grep -E "Warning|Error" $MOS_DIR/objects/events.log | sort -M >>"$OUT"
@@ -2016,7 +2015,6 @@ if [[ -n "$MCCNAME" ]]; then
   echo "Gathering MCC events..."
   echo "################# [MCC EVENTS (WARNING+ERRORS)] #################" >"$OUT"
   echo "" >>"$OUT"
-  echo "## Analyzed files:" >>"$OUT"
   printf '# ' >>"$OUT"
   ls $MCC_DIR/objects/events.log >>"$OUT"
   grep -E "Warning|Error" $MCC_DIR/objects/events.log | sort -M >>"$OUT"
@@ -2632,12 +2630,6 @@ if [[ -n "$MCC_DIR" ]]; then
   echo "$HEADER" >>"$BUF_FAILED"
   echo "----------------------------------------------------" >>"$BUF_FAILED"
 
-  # 1. Collect all files for the links at the top
-  find "$MCC_DIR" -path "*/core/pods/*.yaml" -type f | while read -r f; do
-    echo "# [FILE]: $f" >>"$OUT_RUNNING"
-    echo "# [FILE]: $f" >>"$OUT_FAILED"
-  done
-
   while read -r f; do
     PHASE=$(yq eval '.Object.status.phase // .status.phase' "$f" 2>/dev/null)
     LINE=$(get_pod_line "$f")
@@ -2677,10 +2669,21 @@ if [[ -n "$MCC_DIR" ]]; then
 
   # Finalize files
   COUNT_RUNNING=$MCC_RUNNING
+  
+  # --- MCC RUNNING PODS ---
   echo "################# [MCC RUNNING PODS] (Total: $COUNT_RUNNING) #################" >"$OUT_RUNNING"
+  find "$MCC_DIR" -path "*/core/pods/*.yaml" -type f | while read -r f; do
+    echo "# [FILE]: $f" >>"$OUT_RUNNING"
+  done
+  echo "" >>"$OUT_RUNNING"
   cat "$BUF_RUNNING" >>"$OUT_RUNNING"
   
+  # --- MCC FAILED/COMPLETED PODS ---
   echo "################# [MCC FAILED/COMPLETED PODS] (Total: $COUNT_FAILED) #################" >"$OUT_FAILED"
+  find "$MCC_DIR" -path "*/core/pods/*.yaml" -type f | while read -r f; do
+    echo "# [FILE]: $f" >>"$OUT_FAILED"
+  done
+  echo "" >>"$OUT_FAILED"
   cat "$BUF_FAILED" >>"$OUT_FAILED"
   
   rm "$BUF_RUNNING" "$BUF_FAILED"
@@ -2704,12 +2707,6 @@ if [[ -n "$MOS_DIR" ]]; then
   echo "$HEADER" >>"$BUF_RUNNING"
   echo "$HEADER" >>"$BUF_FAILED"
   echo "----------------------------------------------------" >>"$BUF_FAILED"
-
-  # 1. Collect all files for the links at the top
-  find "$MOS_DIR" -path "*/core/pods/*.yaml" -type f | while read -r f; do
-    echo "# [FILE]: $f" >>"$OUT_RUNNING"
-    echo "# [FILE]: $f" >>"$OUT_FAILED"
-  done
 
   while read -r f; do
     PHASE=$(yq eval '.Object.status.phase // .status.phase' "$f" 2>/dev/null)
@@ -2750,10 +2747,21 @@ if [[ -n "$MOS_DIR" ]]; then
 
   # Finalize files
   COUNT_RUNNING=$MOS_RUNNING
+  
+  # --- MOS RUNNING PODS ---
   echo "################# [MOS RUNNING PODS] (Total: $COUNT_RUNNING) #################" >"$OUT_RUNNING"
+  find "$MOS_DIR" -path "*/core/pods/*.yaml" -type f | while read -r f; do
+    echo "# [FILE]: $f" >>"$OUT_RUNNING"
+  done
+  echo "" >>"$OUT_RUNNING"
   cat "$BUF_RUNNING" >>"$OUT_RUNNING"
   
+  # --- MOS FAILED/COMPLETED PODS ---
   echo "################# [MOS FAILED/COMPLETED PODS] (Total: $COUNT_FAILED) #################" >"$OUT_FAILED"
+  find "$MOS_DIR" -path "*/core/pods/*.yaml" -type f | while read -r f; do
+    echo "# [FILE]: $f" >>"$OUT_FAILED"
+  done
+  echo "" >>"$OUT_FAILED"
   cat "$BUF_FAILED" >>"$OUT_FAILED"
   
   rm "$BUF_RUNNING" "$BUF_FAILED"
