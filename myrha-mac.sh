@@ -669,7 +669,84 @@ if [[ -n "$MCCNAME" ]]; then
   OUT="$LOGPATH/mcc_credentials.yaml"
   echo "Scanning MCC Secrets for Credentials..."
   echo "################# [MCC CREDENTIALS (DECRYPTED)] #################" >"$OUT"
+
+  # Include Cluster Object
+  MCC_CLUSTER_OBJ="$MCC_DIR/objects/namespaced/default/cluster.k8s.io/clusters/kaas-mgmt.yaml"
+  if [[ -f "$MCC_CLUSTER_OBJ" ]]; then
+     echo "----------------------------------------------------" >> "$OUT"
+     echo "## MCC Cluster Object (Cluster API): $MCC_CLUSTER_OBJ" >> "$OUT"
+     yq eval '.Object // .' "$MCC_CLUSTER_OBJ" 2>/dev/null >> "$OUT"
+     
+     echo -e "\n## 🔐 DECRYPTED CREDENTIALS FROM CLUSTER OBJECT:" >> "$OUT"
+     CREDS=$(yq eval '.Object.spec.providerSpec.value.credentials // .spec.providerSpec.value.credentials' "$MCC_CLUSTER_OBJ" 2>/dev/null)
+     if [[ -n "$CREDS" && "$CREDS" != '""' ]]; then
+        DECODED=$(echo "$CREDS" | base64 -d 2>/dev/null)
+        if [[ -n "$DECODED" ]]; then
+           echo "$DECODED" | while read -r line; do
+              if [[ "$line" =~ user|pass ]]; then
+                 echo "🔑 $line" >> "$OUT"
+              fi
+           done
+        else
+           echo "🔑 credentials : $CREDS" >> "$OUT"
+        fi
+     else
+        echo "No credentials found in Cluster object or empty." >> "$OUT"
+     fi
+  fi
+
   find "$MCC_DIR" -path "*/core/secrets/*.yaml" -type f | while read -r f; do
+    DATA_EXPR='(.Object.data // .data // .Object.stringData // .stringData)'
+    KEYS=$(yq eval "$DATA_EXPR | keys | .[]" "$f" 2>/dev/null)
+    FILE_BUF=""
+    for KEY in $KEYS; do
+      if [[ "$KEY" =~ user|pass|login|account|creds|secret|token|key ]]; then
+        VAL=$(yq eval "$DATA_EXPR.\"$KEY\"" "$f" 2>/dev/null)
+        DECODED=$(echo "$VAL" | base64 -d 2>/dev/null)
+        if [[ -n "$DECODED" && ! "$DECODED" =~ [^[:print:][:space:]] ]]; then
+           FILE_BUF+=$(printf "🔑 %-30s : %s\n" "$KEY" "$DECODED")
+        fi
+      fi
+    done
+    if [[ -n "$FILE_BUF" ]]; then
+       echo "----------------------------------------------------" >>"$OUT"
+       echo "## File: $f" >>"$OUT"
+       echo -e "$FILE_BUF" >>"$OUT"
+    fi
+  done
+fi
+
+if [[ -n "$MOSNAME" ]]; then
+  OUT="$LOGPATH/mos_credentials.yaml"
+  echo "Scanning MOS Secrets for Credentials..."
+  echo "################# [MOS CREDENTIALS (DECRYPTED)] #################" >"$OUT"
+
+  # Include Cluster Object
+  MOS_CLUSTER_OBJ="$MCC_DIR/objects/namespaced/$MOSNAMESPACE/cluster.k8s.io/clusters/$MOSNAME.yaml"
+  if [[ -f "$MOS_CLUSTER_OBJ" ]]; then
+     echo "----------------------------------------------------" >> "$OUT"
+     echo "## MOS Cluster Object (Cluster API): $MOS_CLUSTER_OBJ" >> "$OUT"
+     yq eval '.Object // .' "$MOS_CLUSTER_OBJ" 2>/dev/null >> "$OUT"
+     
+     echo -e "\n## 🔐 DECRYPTED CREDENTIALS FROM CLUSTER OBJECT:" >> "$OUT"
+     CREDS=$(yq eval '.Object.spec.providerSpec.value.credentials // .spec.providerSpec.value.credentials' "$MOS_CLUSTER_OBJ" 2>/dev/null)
+     if [[ -n "$CREDS" && "$CREDS" != '""' ]]; then
+        DECODED=$(echo "$CREDS" | base64 -d 2>/dev/null)
+        if [[ -n "$DECODED" ]]; then
+           echo "$DECODED" | while read -r line; do
+              if [[ "$line" =~ user|pass ]]; then
+                 echo "🔑 $line" >> "$OUT"
+              fi
+           done
+        else
+           echo "🔑 credentials : $CREDS" >> "$OUT"
+        fi
+     else
+        echo "No credentials found in Cluster object or empty." >> "$OUT"
+     fi
+  fi
+
+  find "$MOS_DIR" -path "*/core/secrets/*.yaml" -type f | while read -r f; do
     DATA_EXPR='(.Object.data // .data // .Object.stringData // .stringData)'
     KEYS=$(yq eval "$DATA_EXPR | keys | .[]" "$f" 2>/dev/null)
     FILE_BUF=""
@@ -753,6 +830,13 @@ echo -e "\n## 🔍 TOP ERRORS & BLOCKERS:" >>"$OUT"
 grep -hEi "error|fail|denied|forbidden|context deadline exceeded" "$LOGPATH"/*.yaml 2>/dev/null | sort | uniq -c | sort -nr | head -n 10 >>"$OUT"
 
 # --- FINAL DASHBOARD ASSEMBLY ---
+# Formatting (Add empty lines before ##)
+echo "Formatting cards..."
+for f in "$LOGPATH"/*.yaml; do
+    [[ -f "$f" ]] || continue
+    awk 'NR>1 && /^##/ && last !~ /^$/ {print ""} {print; last=$0}' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+done
+
 for yaml_file in $(ls "$LOGPATH"/*.yaml 2>/dev/null | sort); do
     TITLE=$(basename "$yaml_file" .yaml | tr '_' ' ' | tr '[:lower:]' '[:upper:]')
     ANCHOR=$(echo "$TITLE" | tr ' ' '-')
