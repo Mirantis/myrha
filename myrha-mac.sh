@@ -555,7 +555,9 @@ if [[ -n "$MOSNAME" ]]; then
   if [[ -f "$MOS_CLUSTER_FILE" ]]; then
     echo "## MOS Cluster Status (Cluster API):" >>"$OUT"
     echo "# [FILE]: $MOS_CLUSTER_FILE" >>"$OUT"
-    yq eval '.Object.status.providerStatus | {"ready": .ready, "ceph": .ceph, "warnings": .warnings, "notReadyObjects": .notReadyObjects}' "$MOS_CLUSTER_FILE" 2>/dev/null >>"$OUT"
+    grep -E "release: |      - message" "$MOS_CLUSTER_FILE" >>"$OUT"
+    sed -n '/          stacklight:/,/      kind:/p' "$MOS_CLUSTER_FILE" >>"$OUT"
+    #yq eval '.Object.status.providerStatus | {"ready": .ready, "ceph": .ceph, "warnings": .warnings, "notReadyObjects": .notReadyObjects}' "$MOS_CLUSTER_FILE" 2>/dev/null >>"$OUT"
     echo "" >>"$OUT"
   fi
 
@@ -673,13 +675,10 @@ if [[ -n "$MCCNAME" ]]; then
   # Include Cluster Object
   MCC_CLUSTER_OBJ="$MCC_DIR/objects/namespaced/default/cluster.k8s.io/clusters/kaas-mgmt.yaml"
   if [[ -f "$MCC_CLUSTER_OBJ" ]]; then
-     echo "----------------------------------------------------" >> "$OUT"
-     echo "## MCC Cluster Object (Cluster API): $MCC_CLUSTER_OBJ" >> "$OUT"
-     yq eval '.Object // .' "$MCC_CLUSTER_OBJ" 2>/dev/null >> "$OUT"
-     
-     echo -e "\n## 🔐 DECRYPTED CREDENTIALS FROM CLUSTER OBJECT:" >> "$OUT"
      CREDS=$(yq eval '.Object.spec.providerSpec.value.credentials // .spec.providerSpec.value.credentials' "$MCC_CLUSTER_OBJ" 2>/dev/null)
      if [[ -n "$CREDS" && "$CREDS" != '""' ]]; then
+        echo "----------------------------------------------------" >> "$OUT"
+        echo "## MCC Cluster Object (Cluster API): $MCC_CLUSTER_OBJ" >> "$OUT"
         DECODED=$(echo "$CREDS" | base64 -d 2>/dev/null)
         if [[ -n "$DECODED" ]]; then
            echo "$DECODED" | while read -r line; do
@@ -690,8 +689,6 @@ if [[ -n "$MCCNAME" ]]; then
         else
            echo "🔑 credentials : $CREDS" >> "$OUT"
         fi
-     else
-        echo "No credentials found in Cluster object or empty." >> "$OUT"
      fi
   fi
 
@@ -724,13 +721,10 @@ if [[ -n "$MOSNAME" ]]; then
   # Include Cluster Object
   MOS_CLUSTER_OBJ="$MCC_DIR/objects/namespaced/$MOSNAMESPACE/cluster.k8s.io/clusters/$MOSNAME.yaml"
   if [[ -f "$MOS_CLUSTER_OBJ" ]]; then
-     echo "----------------------------------------------------" >> "$OUT"
-     echo "## MOS Cluster Object (Cluster API): $MOS_CLUSTER_OBJ" >> "$OUT"
-     yq eval '.Object // .' "$MOS_CLUSTER_OBJ" 2>/dev/null >> "$OUT"
-     
-     echo -e "\n## 🔐 DECRYPTED CREDENTIALS FROM CLUSTER OBJECT:" >> "$OUT"
      CREDS=$(yq eval '.Object.spec.providerSpec.value.credentials // .spec.providerSpec.value.credentials' "$MOS_CLUSTER_OBJ" 2>/dev/null)
      if [[ -n "$CREDS" && "$CREDS" != '""' ]]; then
+        echo "----------------------------------------------------" >> "$OUT"
+        echo "## MOS Cluster Object (Cluster API): $MOS_CLUSTER_OBJ" >> "$OUT"
         DECODED=$(echo "$CREDS" | base64 -d 2>/dev/null)
         if [[ -n "$DECODED" ]]; then
            echo "$DECODED" | while read -r line; do
@@ -741,8 +735,6 @@ if [[ -n "$MOSNAME" ]]; then
         else
            echo "🔑 credentials : $CREDS" >> "$OUT"
         fi
-     else
-        echo "No credentials found in Cluster object or empty." >> "$OUT"
      fi
   fi
 
