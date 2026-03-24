@@ -1088,6 +1088,7 @@ if [[ -n "$MOSNAME" ]]; then
     grep -m1 "      openstack_version:" $MOS_STATUS_FILE >>"$OUT"
     sed -n '/    services:/,$p' $MOS_STATUS_FILE >>"$OUT"
     if [[ -n "$MCCNAME" ]]; then
+      echo "" >>"$OUT"
       echo "## LCM status:" >>"$OUT"
       printf '# ' >>"$OUT"
       LCM_YAML="$MCC_DIR/objects/namespaced/$MOSNAMESPACE/lcm.mirantis.com/lcmclusters/$MOSNAME.yaml"
@@ -1100,8 +1101,9 @@ if [[ -n "$MOSNAME" ]]; then
         fi
         sed -n '/  status:/,/    requestedNodes:/p' $LCM_YAML >>"$OUT"
       fi
-
+      
       if [[ -f "$MOS_CLUSTER_FILE" ]]; then
+        echo "" >>"$OUT"
         echo "## MOS Cluster Status (Cluster API):" >>"$OUT"
         printf '# ' >>"$OUT"
         ls $MOS_CLUSTER_FILE >>"$OUT"
@@ -1174,6 +1176,31 @@ if [[ -n "$MOSNAME" ]]; then
   echo "################# [MOS CREDENTIALS (DECRYPTED)] #################" >"$OUT"
   echo "" > "$TMP_CREDS"
   echo "" > "$TMP_TOKENS"
+
+  # Include Cluster Object
+  MOS_CLUSTER_OBJ="$MCC_DIR/objects/namespaced/$MOSNAMESPACE/cluster.k8s.io/clusters/$MOSNAME.yaml"
+  if [[ -f "$MOS_CLUSTER_OBJ" ]]; then
+     echo "----------------------------------------------------" >> "$OUT"
+     echo "## MOS Cluster Object (Cluster API): $MOS_CLUSTER_OBJ" >> "$OUT"
+     yq eval '.Object // .' "$MOS_CLUSTER_OBJ" 2>/dev/null >> "$OUT"
+     
+     echo -e "\n## 🔐 DECRYPTED CREDENTIALS FROM CLUSTER OBJECT:" >> "$OUT"
+     CREDS=$(yq eval '.Object.spec.providerSpec.value.credentials // .spec.providerSpec.value.credentials' "$MOS_CLUSTER_OBJ" 2>/dev/null)
+     if [[ -n "$CREDS" && "$CREDS" != '""' ]]; then
+        DECODED=$(echo "$CREDS" | base64 -d 2>/dev/null)
+        if [[ -n "$DECODED" ]]; then
+           echo "$DECODED" | while read -r line; do
+              if [[ "$line" =~ user|pass ]]; then
+                 echo "🔑 $line" >> "$OUT"
+              fi
+           done
+        else
+           echo "🔑 credentials : $CREDS" >> "$OUT"
+        fi
+     else
+        echo "No credentials found in Cluster object or empty." >> "$OUT"
+     fi
+  fi
 
   find "$MOS_DIR" -path "*/core/secrets/*.yaml" -type f | while read -r secret_file; do
     DATA_EXPR='(.Object.data // .data // .Object.stringData // .stringData)'
@@ -2119,6 +2146,31 @@ if [[ -n "$MCCNAME" ]]; then
   echo "################# [MCC CREDENTIALS (DECRYPTED)] #################" >"$OUT"
   echo "" > "$TMP_CREDS"
   echo "" > "$TMP_TOKENS"
+
+  # Include Cluster Object
+  MCC_CLUSTER_OBJ="$MCC_DIR/objects/namespaced/default/cluster.k8s.io/clusters/kaas-mgmt.yaml"
+  if [[ -f "$MCC_CLUSTER_OBJ" ]]; then
+     echo "----------------------------------------------------" >> "$OUT"
+     echo "## MCC Cluster Object (Cluster API): $MCC_CLUSTER_OBJ" >> "$OUT"
+     yq eval '.Object // .' "$MCC_CLUSTER_OBJ" 2>/dev/null >> "$OUT"
+     
+     echo -e "\n## 🔐 DECRYPTED CREDENTIALS FROM CLUSTER OBJECT:" >> "$OUT"
+     CREDS=$(yq eval '.Object.spec.providerSpec.value.credentials // .spec.providerSpec.value.credentials' "$MCC_CLUSTER_OBJ" 2>/dev/null)
+     if [[ -n "$CREDS" && "$CREDS" != '""' ]]; then
+        DECODED=$(echo "$CREDS" | base64 -d 2>/dev/null)
+        if [[ -n "$DECODED" ]]; then
+           echo "$DECODED" | while read -r line; do
+              if [[ "$line" =~ user|pass ]]; then
+                 echo "🔑 $line" >> "$OUT"
+              fi
+           done
+        else
+           echo "🔑 credentials : $CREDS" >> "$OUT"
+        fi
+     else
+        echo "No credentials found in Cluster object or empty." >> "$OUT"
+     fi
+  fi
 
   find "$MCC_DIR" -path "*/core/secrets/*.yaml" -type f | while read -r secret_file; do
     DATA_EXPR='(.Object.data // .data // .Object.stringData // .stringData)'
@@ -3244,6 +3296,13 @@ if [[ -n "$MCCNAME" ]] || [[ -n "$MOSNAME" ]]; then
      MOS_STATUS_FILE=$(ls $MOS_DIR/objects/namespaced/openstack/lcm.mirantis.com/openstackdeploymentstatus/*.yaml 2>/dev/null | head -n 1)
      [[ -f "$MOS_STATUS_FILE" ]] && MOS_VER_STR=" (Rel: $(grep -m1 "    release: " "$MOS_STATUS_FILE" | sed 's/.*release: //; s/[[:space:]]//g; s/\.$//'))"
   fi
+
+  # --- FORMATTING (Add empty lines before ##) ---
+  echo "Formatting cards..."
+  for f in "$LOGPATH"/*.yaml; do
+    [[ -f "$f" ]] || continue
+    awk 'NR>1 && /^##/ && last !~ /^$/ {print ""} {print; last=$0}' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+  done
 
   # 3. BUILD SIDEBAR LINKS
   for yaml_file in $(ls "$LOGPATH"/*.yaml 2>/dev/null | sort); do
