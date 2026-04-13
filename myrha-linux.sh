@@ -7,6 +7,7 @@ fi
 
 # Declare variables
 DATE=$(date +"%d-%m-%Y-%H-%M-%S")
+DISPLAY_DATE=$(echo "$DATE" | sed 's/-\([0-9]\{2\}\)-\([0-9]\{2\}\)-\([0-9]\{2\}\)$/-\1:\2:\3/')
 GREP="grep --color=auto"
 LOGPATH=myrha
 HTML_REPORT="$LOGPATH/report_$DATE.html"
@@ -264,7 +265,8 @@ cat <<'EOF' >"$HTML_REPORT"
         const card = document.getElementById(anchor);
         const isFS = card.classList.toggle('fullscreen');
         document.body.classList.toggle('has-fullscreen', isFS);
-        btn.innerText = isFS ? 'Exit Full Screen' : 'Full Screen';
+        btn.innerHTML = isFS ? '❐' : '▢';
+        btn.title = isFS ? 'Restore Card' : 'Maximize Card';
         btn.classList.toggle('active', isFS);
     }
     function scrollToLimit(anchor, limit) {
@@ -1169,37 +1171,114 @@ if [[ -d "$MOS_DIR/objects/namespaced/stacklight" ]]; then
   fi
 fi
 
-# 6. MOS Credentials Card
+# 6. MOS Secrets Card
 if [[ -n "$MOSNAME" ]]; then
-  OUT="$LOGPATH/mos_credentials.yaml"
+  OUT="$LOGPATH/mos_secrets.yaml"
   echo "Scanning MOS Secrets for Credentials..."
   TMP_CREDS="$LOGPATH/mos_creds_other"
   TMP_TOKENS="$LOGPATH/mos_creds_tokens"
-  echo "################# [MOS CREDENTIALS (DECRYPTED)] #################" >"$OUT"
+  echo "################# [MOS SECRETS (DECRYPTED)] #################" >"$OUT"
   echo "" > "$TMP_CREDS"
   echo "" > "$TMP_TOKENS"
 
-  # Include Cluster Object
+  # Include Cluster and LCM Objects for credentials scan
   MOS_CLUSTER_OBJ="$MCC_DIR/objects/namespaced/$MOSNAMESPACE/cluster.k8s.io/clusters/$MOSNAME.yaml"
-  if [[ -f "$MOS_CLUSTER_OBJ" ]]; then
-     CREDS=$(yq eval '.Object.spec.providerSpec.value.credentials // .spec.providerSpec.value.credentials' "$MOS_CLUSTER_OBJ" 2>/dev/null)
-     if [[ -n "$CREDS" && "$CREDS" != '""' ]]; then
-        echo "----------------------------------------------------" >> "$OUT"
-        echo "## MOS Cluster Object (Cluster API): $MOS_CLUSTER_OBJ" >> "$OUT"
-        DECODED=$(echo "$CREDS" | base64 -d 2>/dev/null)
-        if [[ -n "$DECODED" ]]; then
-           echo "$DECODED" | while read -r line; do
-              if [[ "$line" =~ user|pass ]]; then
-                 echo "🔑 $line" >> "$OUT"
-              fi
-           done
-        else
-           echo "🔑 credentials : $CREDS" >> "$OUT"
-        fi
-     fi
+  MOS_LCM_OBJ="$MCC_DIR/objects/namespaced/$MOSNAMESPACE/lcm.mirantis.com/lcmclusters/$MOSNAME.yaml"
+  MOS_IPAM_OBJ="$MCC_DIR/objects/namespaced/$MOSNAMESPACE/ipam.mirantis.com/ipamclusters/$MOSNAME.yaml"
+
+  TMP_ALL_FINDINGS="$LOGPATH/mos_creds_all_found"
+  echo -n "" > "$TMP_ALL_FINDINGS"
+
+  for sf in "$MOS_CLUSTER_OBJ" "$MOS_LCM_OBJ" "$MOS_IPAM_OBJ"; do
+    if [[ -f "$sf" ]]; then
+       # 1. Specific Legacy Credentials field in Cluster API
+       if [[ "$sf" == "$MOS_CLUSTER_OBJ" ]]; then
+          CREDS=$(yq eval '.Object.spec.providerSpec.value.credentials // .spec.providerSpec.value.credentials' "$sf" 2>/dev/null)
+          if [[ -n "$CREDS" && "$CREDS" != '""' ]]; then
+             echo "----------------------------------------------------" >> "$OUT"
+             echo "## MOS Cluster Object (Cluster API): $sf" >> "$OUT"
+             DECODED=$(echo "$CREDS" | base64 -d 2>/dev/null)
+             if [[ -n "$DECODED" ]]; then
+                echo "$DECODED" | while read -r line; do
+                   if [[ "$line" =~ user|pass ]]; then echo "🔑 $line" >> "$OUT"; fi
+                done
+             else
+                echo "🔑 credentials : $CREDS" >> "$OUT"
+             fi
+          fi
+       fi
+
+       # 2. Generic Recursive Scan for any credential-like fields
+       # Collect into a temporary list for uniqueness later
+       yq eval '.. | select(type == "!!map") | to_entries | .[] | select(.key == "*user*" or .key == "*pass*" or .key == "*login*" or .key == "*account*" or .key == "*cred*" or .key == "*secret*" or .key == "*token*" or .key == "*key*") | select(.value | kind == "scalar") | .key + ":::" + .value' "$sf" 2>/dev/null >> "$TMP_ALL_FINDINGS"
+
+       # 3. Keycloak Users Scan
+       if [[ "$sf" == "$MOS_CLUSTER_OBJ" ]]; then
+          KC_INFO=$(yq eval ".. | select(has(\"passwordHash\")) | (.username + \" | Hash: \" + .passwordHash + \" | Salt: \" + .passwordSalt)" "$sf" 2>/dev/null)
+          if [[ -n "$KC_INFO" && "$KC_INFO" != "null" ]]; then
+             echo "----------------------------------------------------" >> "$TMP_CREDS"
+             echo "## Keycloak Users in File: $sf" >> "$TMP_CREDS"
+             echo "$KC_INFO" | while read -r kc_line; do
+                [[ -z "$kc_line" ]] && continue
+                echo "🔑 Keycloak User: $kc_line" >> "$TMP_CREDS"
+             done
+          fi
+       fi
+    fi
+  done
+
+  # Process unique findings
+  if [[ -f "$TMP_ALL_FINDINGS" ]]; then
+    sort -u "$TMP_ALL_FINDINGS" | while read -r line; do
+       [[ -z "$line" ]] && continue
+       KEY=${line%%:::*}
+       VAL=${line#*:::}
+       
+       # Skip known non-credential fields and certs
+       [[ "$VAL" == "null" || ${#VAL} -lt 4 ]] && continue
+       [[ "$KEY" =~ (cert|key|pub|authorized_keys|pem|crt|authorized|kind|api|image|repo|version|status|phase|name) ]] && continue
+
+       TARGET_BUF="$TMP_CREDS"
+       [[ "$KEY" =~ token ]] && TARGET_BUF="$TMP_TOKENS"
+
+       # Try base64 decode if value looks like base64 (alphanumeric, maybe ending in =)
+       DECODED=""
+       if [[ "$VAL" =~ ^[A-Za-z0-9+/]+={0,2}$ && ${#VAL} -ge 8 ]]; then
+          # Add padding if needed for base64 command
+          PADDED_VAL="$VAL"
+          [[ $((${#VAL} % 4)) -eq 2 ]] && PADDED_VAL="${VAL}=="
+          [[ $((${#VAL} % 4)) -eq 3 ]] && PADDED_VAL="${VAL}="
+          
+          TMP_DEC=$(echo -n "$PADDED_VAL" | base64 -d 2>/dev/null)
+          if [[ -n "$TMP_DEC" ]]; then
+             # Strict printable check: remove all printable and spaces, if anything left, it's garbage
+             NON_PRINTABLE=$(echo -n "$TMP_DEC" | tr -d '[:print:][:space:]' 2>/dev/null)
+             if [[ -z "$NON_PRINTABLE" && ${#TMP_DEC} -gt 3 ]]; then
+                DECODED="$TMP_DEC"
+             fi
+          fi
+       fi
+       
+       if [[ -n "$DECODED" ]]; then
+          # Check if it's a multi-line credential blob
+          if echo "$DECODED" | grep -qE "user|pass|login|account"; then
+             echo "🔑 $KEY (base64 decoded blob):" >> "$TARGET_BUF"
+             echo "$DECODED" | while read -r dline; do
+                [[ -z "$dline" ]] && continue
+                echo "    $dline" >> "$TARGET_BUF"
+             done
+          else
+             echo "🔑 $KEY : $DECODED (base64 decoded)" >> "$TARGET_BUF"
+          fi
+       else
+          echo "🔑 $KEY : $VAL" >> "$TARGET_BUF"
+       fi
+    done
+    rm "$TMP_ALL_FINDINGS"
   fi
 
-  find "$MOS_DIR" -path "*/core/secrets/*.yaml" -type f | while read -r secret_file; do
+  # Scan all kind: Secret files in MOS_DIR and also in the MOS namespace of MCC_DIR
+  find "$MOS_DIR" "$MCC_DIR/objects/namespaced/$MOSNAMESPACE" -name "*.yaml" -type f 2>/dev/null -exec grep -l "kind: Secret" {} + | while read -r secret_file; do
     DATA_EXPR='(.Object.data // .data // .Object.stringData // .stringData)'
     KEYS=$(yq eval "$DATA_EXPR | keys | .[]" "$secret_file" 2>/dev/null)
     
@@ -1208,7 +1287,7 @@ if [[ -n "$MOSNAME" ]]; then
     FILE_BUF_TOKENS=""
 
     for KEY in $KEYS; do
-      if [[ "$KEY" =~ user|pass|login|account|creds|secret|token|key ]]; then
+      if [[ "$KEY" =~ user|pass|login|account|cred|secret|token|key ]]; then
         VAL=$(yq eval "$DATA_EXPR.\"$KEY\"" "$secret_file" 2>/dev/null)
         DECODED=$(echo "$VAL" | base64 -d 2>/dev/null)
         
@@ -1258,6 +1337,9 @@ if [[ -n "$MOSNAME" ]]; then
       fi
     done
 
+    if [[ -n "$FILE_BUF_CREDS" ]] || [[ -n "$FILE_BUF_TOKENS" ]]; then
+       echo "# [FILE]: $secret_file" >> "$OUT"
+    fi
     if [[ -n "$FILE_BUF_CREDS" ]]; then
        echo "----------------------------------------------------" >> "$TMP_CREDS"
        echo "## File: $secret_file" >> "$TMP_CREDS"
@@ -1270,7 +1352,7 @@ if [[ -n "$MOSNAME" ]]; then
     fi
   done
 
-  echo -e "\n## 🛡️ GENERAL CREDENTIALS:" >> "$OUT"
+  echo -e "\n## 🛡️ GENERAL SECRETS:" >> "$OUT"
   cat "$TMP_CREDS" >> "$OUT"
   echo -e "\n## 🎟️ TOKENS:" >> "$OUT"
   cat "$TMP_TOKENS" >> "$OUT"
@@ -2031,7 +2113,8 @@ if [[ -n "$MCCNAME" ]]; then
     printf '# ' >>"$OUT"
     ls $MCC_YAML >>"$OUT"
     grep -E "release: kaas-|release: mke-|      - message" "$MCC_YAML" >>"$OUT"
-    sed -n '/          stacklight:/,/      kind:/p' "$MCC_YAML" >>"$OUT"
+    # Detailed provider status extraction
+    yq eval '(.Object.status.providerStatus // .status.providerStatus) | {"stacklight": (.helm.releases.stacklight // .helm.stacklight), "kind": .kind, "loadBalancerHost": .loadBalancerHost, "loadBalancerIP": .loadBalancerIP, "loadBalancerStatus": .loadBalancerStatus, "metadata": .metadata, "mke": .mke, "nodes": .nodes, "tls": .tls, "ucpDashboard": .ucpDashboard}' "$MCC_YAML" | sed 's/^/      /' >>"$OUT"
     echo "" >>"$OUT"
     echo "## LCM status:" >>"$OUT"
     printf '# ' >>"$OUT"
@@ -2134,23 +2217,24 @@ if [[ -d "$MCC_DIR/objects/namespaced/stacklight" ]]; then
   fi
 fi
 
-# 6. MCC Credentials Card
+# 6. MCC Secrets Card
 if [[ -n "$MCCNAME" ]]; then
-  OUT="$LOGPATH/mcc_credentials.yaml"
+  OUT="$LOGPATH/mcc_secrets.yaml"
   echo "Scanning MCC Secrets for Credentials..."
   TMP_CREDS="$LOGPATH/mcc_creds_other"
   TMP_TOKENS="$LOGPATH/mcc_creds_tokens"
-  echo "################# [MCC CREDENTIALS (DECRYPTED)] #################" >"$OUT"
+  echo "################# [MCC SECRETS (DECRYPTED)] #################" >"$OUT"
   echo "" > "$TMP_CREDS"
   echo "" > "$TMP_TOKENS"
 
   # Include Cluster Object
-  MCC_CLUSTER_OBJ="$MCC_DIR/objects/namespaced/default/cluster.k8s.io/clusters/kaas-mgmt.yaml"
-  if [[ -f "$MCC_CLUSTER_OBJ" ]]; then
-     CREDS=$(yq eval '.Object.spec.providerSpec.value.credentials // .spec.providerSpec.value.credentials' "$MCC_CLUSTER_OBJ" 2>/dev/null)
-     if [[ -n "$CREDS" && "$CREDS" != '""' ]]; then
-        echo "----------------------------------------------------" >> "$OUT"
-        echo "## MCC Cluster Object (Cluster API): $MCC_CLUSTER_OBJ" >> "$OUT"
+  find "$MCC_DIR/objects/namespaced/default/cluster.k8s.io/clusters" -name "*.yaml" -type f 2>/dev/null | while read -r cluster_file; do
+     echo "# [FILE]: $cluster_file" >> "$OUT"
+     echo "----------------------------------------------------" >> "$OUT"
+     echo "## MCC Cluster Object (Cluster API): $cluster_file" >> "$OUT"
+     
+     CREDS=$(yq eval ".Object.spec.providerSpec.value.credentials // .spec.providerSpec.value.credentials" "$cluster_file" 2>/dev/null)
+     if [[ -n "$CREDS" && "$CREDS" != '""' && "$CREDS" != "null" ]]; then
         DECODED=$(echo "$CREDS" | base64 -d 2>/dev/null)
         if [[ -n "$DECODED" ]]; then
            echo "$DECODED" | while read -r line; do
@@ -2162,9 +2246,62 @@ if [[ -n "$MCCNAME" ]]; then
            echo "🔑 credentials : $CREDS" >> "$OUT"
         fi
      fi
-  fi
 
-  find "$MCC_DIR" -path "*/core/secrets/*.yaml" -type f | while read -r secret_file; do
+     # Improved Scan for Cluster Object
+     KEYS_TO_SCAN=("ucpAdminPassword" "ucp_admin_password" "ucp_service_user_password" "kube_lb_auth_pass" "sshConfig" "bindCredential" "password")
+     for KEY in "${KEYS_TO_SCAN[@]}"; do
+       VALS=$(yq eval ".. | select(has(\"$KEY\")) | .\"$KEY\" | (select(type == \"!!str\") // . | tojson)" "$cluster_file" 2>/dev/null | sort -u)
+       if [[ -n "$VALS" && "$VALS" != "null" && "$VALS" != '""' ]]; then
+          echo "$VALS" | while read -r val; do
+             val=$(echo "$val" | sed 's/^"//; s/"$//')
+             [[ -z "$val" ]] && continue
+             echo "🔑 $KEY : $val" >> "$OUT"
+          done
+       fi
+     done
+
+     # Keycloak Users Scan
+     KC_INFO=$(yq eval ".. | select(has(\"passwordHash\")) | (.username + \" | Hash: \" + .passwordHash + \" | Salt: \" + .passwordSalt)" "$cluster_file" 2>/dev/null)
+     if [[ -n "$KC_INFO" && "$KC_INFO" != "null" ]]; then
+        echo "----------------------------------------------------" >> "$TMP_CREDS"
+        echo "## MCC Cluster Object: $cluster_file" >> "$TMP_CREDS"
+        echo "$KC_INFO" | while read -r kc_line; do
+           [[ -z "$kc_line" ]] && continue
+           echo "🔑 Keycloak User: $kc_line" >> "$TMP_CREDS"
+        done
+     fi
+  done
+
+  # Include LCMCluster Objects
+  find "$MCC_DIR/objects/namespaced/default/lcm.mirantis.com/lcmclusters" -name "*.yaml" -type f 2>/dev/null | while read -r lcm_cluster_file; do
+      echo "# [FILE]: $lcm_cluster_file" >> "$OUT"
+      echo "----------------------------------------------------" >> "$OUT"
+      echo "## MCC LCMCluster Object: $lcm_cluster_file" >> "$OUT"
+      KEYS_TO_SCAN=("ucpAdminPassword" "ucp_admin_password" "ucp_service_user_password" "kube_lb_auth_pass" "sshConfig" "bindCredential" "password")
+      for KEY in "${KEYS_TO_SCAN[@]}"; do
+        VALS=$(yq eval ".. | select(has(\"$KEY\")) | .\"$KEY\" | (select(type == \"!!str\") // . | tojson)" "$lcm_cluster_file" 2>/dev/null | sort -u)
+        if [[ -n "$VALS" && "$VALS" != "null" && "$VALS" != '""' ]]; then
+           echo "$VALS" | while read -r val; do
+              val=$(echo "$val" | sed 's/^"//; s/"$//')
+              [[ -z "$val" ]] && continue
+              echo "🔑 $KEY : $val" >> "$OUT"
+           done
+        fi
+      done
+
+      # Keycloak Users Scan
+      KC_INFO=$(yq eval ".. | select(has(\"passwordHash\")) | (.username + \" | Hash: \" + .passwordHash + \" | Salt: \" + .passwordSalt)" "$lcm_cluster_file" 2>/dev/null)
+      if [[ -n "$KC_INFO" && "$KC_INFO" != "null" ]]; then
+         echo "----------------------------------------------------" >> "$TMP_CREDS"
+         echo "## MCC LCMCluster Object: $lcm_cluster_file" >> "$TMP_CREDS"
+         echo "$KC_INFO" | while read -r kc_line; do
+            [[ -z "$kc_line" ]] && continue
+            echo "🔑 Keycloak User: $kc_line" >> "$TMP_CREDS"
+         done
+      fi
+  done
+
+  find "$MCC_DIR" -name "*.yaml" -type f 2>/dev/null -exec grep -l "kind: Secret" {} + | while read -r secret_file; do
     DATA_EXPR='(.Object.data // .data // .Object.stringData // .stringData)'
     KEYS=$(yq eval "$DATA_EXPR | keys | .[]" "$secret_file" 2>/dev/null)
     
@@ -2172,7 +2309,7 @@ if [[ -n "$MCCNAME" ]]; then
     FILE_BUF_TOKENS=""
 
     for KEY in $KEYS; do
-      if [[ "$KEY" =~ user|pass|login|account|creds|secret|token|key ]]; then
+      if [[ "$KEY" =~ user|pass|login|account|cred|secret|token|key ]]; then
         VAL=$(yq eval "$DATA_EXPR.\"$KEY\"" "$secret_file" 2>/dev/null)
         DECODED=$(echo "$VAL" | base64 -d 2>/dev/null)
         
@@ -2221,6 +2358,9 @@ if [[ -n "$MCCNAME" ]]; then
       fi
     done
 
+    if [[ -n "$FILE_BUF_CREDS" ]] || [[ -n "$FILE_BUF_TOKENS" ]]; then
+       echo "# [FILE]: $secret_file" >> "$OUT"
+    fi
     if [[ -n "$FILE_BUF_CREDS" ]]; then
        echo "----------------------------------------------------" >> "$TMP_CREDS"
        echo "## File: $secret_file" >> "$TMP_CREDS"
@@ -2233,7 +2373,7 @@ if [[ -n "$MCCNAME" ]]; then
     fi
   done
 
-  echo -e "\n## 🛡️ GENERAL CREDENTIALS:" >> "$OUT"
+  echo -e "\n## 🛡️ GENERAL SECRETS:" >> "$OUT"
   cat "$TMP_CREDS" >> "$OUT"
   echo -e "\n## 🎟️ TOKENS:" >> "$OUT"
   cat "$TMP_TOKENS" >> "$OUT"
@@ -2340,7 +2480,7 @@ if [[ -n "$MCCNAME" ]]; then
   OUT="$LOGPATH/mcc_certs.yaml"
   echo "Scanning MCC Secrets for PEM data..."
   echo "################# [MCC CERTIFICATE & KEY] #################" >"$OUT"
-  find "$MCC_DIR" -path "*/core/secrets/*.yaml" -type f | while read -r secret_file; do
+  find "$MCC_DIR" -name "*.yaml" -type f 2>/dev/null -exec grep -l "kind: Secret" {} + | while read -r secret_file; do
     DATA_EXPR='(.Object.data // .data // .Object.stringData // .stringData)'
     KEYS=$(yq eval "$DATA_EXPR | keys | .[]" "$secret_file" 2>/dev/null)
     FOUND_IN_FILE=false
@@ -2377,7 +2517,7 @@ if [[ -n "$MOSNAME" ]]; then
   OUT="$LOGPATH/mos_certs.yaml"
   echo "Scanning MOS Secrets for PEM data..."
   echo "################# [MOS CERTIFICATE & KEY] #################" >"$OUT"
-  find "$MOS_DIR" -path "*/core/secrets/*.yaml" -type f | while read -r secret_file; do
+  find "$MOS_DIR" -name "*.yaml" -type f 2>/dev/null -exec grep -l "kind: Secret" {} + | while read -r secret_file; do
     DATA_EXPR='(.Object.data // .data // .Object.stringData // .stringData)'
     KEYS=$(yq eval "$DATA_EXPR | keys | .[]" "$secret_file" 2>/dev/null)
     FOUND_IN_FILE=false
@@ -3321,7 +3461,7 @@ if [[ -n "$MCCNAME" ]] || [[ -n "$MOSNAME" ]]; then
             <strong>Management (MCC):</strong> ${MCCNAME:-N/A}${MCC_VER_STR}
             ${MOSNAME:+ | <strong>Managed (MOSK):</strong> $MOSNAME}${MOS_VER_STR}
             <br>
-            <small>Generated: $DATE</small>
+            <small>Generated: $DISPLAY_DATE</small>
         </p>
     </div>
     <div style="text-align: right; font-size: 0.8rem; line-height: 1.4; padding-right: 40px;">
@@ -3390,9 +3530,9 @@ EOF
       echo "      </div>"
       echo "      <span class='btn-tool' onclick=\"scrollToLimit('$ANCHOR', 'top')\">↑ Log Top</span>"
       echo "      <span class='btn-tool' onclick=\"scrollToLimit('$ANCHOR', 'bottom')\">↓ Log Bottom</span>"
-      echo "      <span class='btn-tool' onclick=\"toggleFullScreen(this, '$ANCHOR')\">Full Screen</span>"
       echo "      <span class='btn-tool btn-copy' onclick=\"copyToClipboard(this, '$ANCHOR')\">Copy</span>"
       echo "      <span class='btn-tool wrap-btn' onclick=\"toggleBlockWrap(this, '$ANCHOR')\">Wrap: OFF</span>"
+      echo "      <span class='btn-tool' onclick=\"toggleFullScreen(this, '$ANCHOR')\" title='Maximize Card'>▢</span>"
       echo "      <span class='btn-tool btn-close' onclick=\"closeCard('$ANCHOR')\" title='Close Card'>✖</span>"
       echo "    </div>"
       echo "  </h2>"
