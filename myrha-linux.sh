@@ -1277,8 +1277,8 @@ if [[ -n "$MOSNAME" ]]; then
     rm "$TMP_ALL_FINDINGS"
   fi
 
-  # Scan all kind: Secret files in MOS_DIR and also in the MOS namespace of MCC_DIR
-  find "$MOS_DIR" "$MCC_DIR/objects/namespaced/$MOSNAMESPACE" -name "*.yaml" -type f 2>/dev/null -exec grep -l "kind: Secret" {} + | while read -r secret_file; do
+  # Scan all kind: Secret files in MOS_DIR, specifically OpenStack secrets, and in the MOS namespace of MCC_DIR
+  find "$MOS_DIR" "$MCC_DIR/objects/namespaced/$MOSNAMESPACE" "$MOS_DIR/objects/namespaced/openstack/core/secrets" -name "*.yaml" -type f 2>/dev/null -exec grep -l "kind: Secret" {} + | sort -u | while read -r secret_file; do
     DATA_EXPR='(.Object.data // .data // .Object.stringData // .stringData)'
     KEYS=$(yq eval "$DATA_EXPR | keys | .[]" "$secret_file" 2>/dev/null)
     
@@ -1287,7 +1287,7 @@ if [[ -n "$MOSNAME" ]]; then
     FILE_BUF_TOKENS=""
 
     for KEY in $KEYS; do
-      if [[ "$KEY" =~ user|pass|login|account|cred|secret|token|key ]]; then
+      if [[ "$secret_file" == *"/openstack/core/secrets/"* ]] || [[ "$KEY" =~ user|pass|login|account|cred|secret|token|key|connection|url|uri|database|passwd ]]; then
         VAL=$(yq eval "$DATA_EXPR.\"$KEY\"" "$secret_file" 2>/dev/null)
         DECODED=$(echo "$VAL" | base64 -d 2>/dev/null)
         
